@@ -19,10 +19,13 @@ Date: 2026-01-20
 
 import json
 import sys
+import warnings
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 from dataclasses import dataclass, asdict
+
+from workflow_constants import PTCS_COLOR_BANDS, PHASE_WEIGHTS
 
 
 # ============================================================================
@@ -420,11 +423,15 @@ class PTCSCalculator:
             firewall_score
         )
 
-        # Statistics
-        low_count = sum(1 for c in claim_ptcs_list if c.ptcs < 60)
-        medium_count = sum(1 for c in claim_ptcs_list if 60 <= c.ptcs <= 70)
-        good_count = sum(1 for c in claim_ptcs_list if 71 <= c.ptcs <= 85)
-        high_count = sum(1 for c in claim_ptcs_list if c.ptcs >= 86)
+        # Statistics (SOT-A: PTCS_COLOR_BANDS)
+        _r = PTCS_COLOR_BANDS["red"]
+        _y = PTCS_COLOR_BANDS["yellow"]
+        _c = PTCS_COLOR_BANDS["cyan"]
+        _g = PTCS_COLOR_BANDS["green"]
+        low_count = sum(1 for c in claim_ptcs_list if _r[0] <= c.ptcs <= _r[1])
+        medium_count = sum(1 for c in claim_ptcs_list if _y[0] <= c.ptcs <= _y[1])
+        good_count = sum(1 for c in claim_ptcs_list if _c[0] <= c.ptcs <= _c[1])
+        high_count = sum(1 for c in claim_ptcs_list if c.ptcs >= _g[0])
 
         # Color coding
         color, confidence_level = self._get_color_coding(ptcs)
@@ -458,6 +465,13 @@ class PTCSCalculator:
         Checks how many required sections are present in the output.
         """
         if not required_sections:
+            # TODO: Define AGENT_REQUIRED_SECTIONS in workflow_constants.py
+            # for actual coverage measurement. Current default inflates score by ~6.25 points.
+            warnings.warn(
+                f"Coverage defaulting to 1.0 (required_sections not defined). "
+                f"Define required_sections for accurate scoring.",
+                stacklevel=2,
+            )
             return 1.0
 
         found_sections = set()
@@ -694,14 +708,8 @@ class PTCSCalculator:
         Returns:
             WorkflowPTCS object with score and breakdown
         """
-        # Phase weights
-        phase_weights = {
-            0: 0.05,  # Init: 5%
-            1: 0.30,  # Literature: 30%
-            2: 0.20,  # Research Design: 20%
-            3: 0.35,  # Thesis Writing: 35%
-            4: 0.10   # Publication: 10%
-        }
+        # Phase weights (from SOT-A)
+        phase_weights = PHASE_WEIGHTS
 
         # Component 1: Phase-weighted Average (70%)
         phase_weighted_sum = sum(
@@ -742,19 +750,16 @@ class PTCSCalculator:
     # ========================================================================
 
     def _get_color_coding(self, ptcs: float) -> Tuple[str, str]:
-        """Get color coding for pTCS score.
+        """Get color coding for pTCS score (SOT-A: PTCS_COLOR_BANDS).
 
         Returns:
             (color, confidence_level)
         """
-        if ptcs <= 60:
-            return ('red', 'low')
-        elif ptcs <= 70:
-            return ('yellow', 'medium')
-        elif ptcs <= 85:
-            return ('cyan', 'good')
-        else:
-            return ('green', 'high')
+        level_names = {'red': 'low', 'yellow': 'medium', 'cyan': 'good', 'green': 'high'}
+        for color, (low, high) in PTCS_COLOR_BANDS.items():
+            if low <= ptcs <= high:
+                return (color, level_names[color])
+        return ('red', 'low')
 
     def get_color_emoji(self, color: str) -> str:
         """Get emoji for color."""

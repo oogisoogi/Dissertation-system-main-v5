@@ -29,6 +29,7 @@ from dataclasses import dataclass, asdict
 sys.path.insert(0, str(Path(__file__).parent))
 from ptcs_calculator import PTCSCalculator, WorkflowPTCS
 from ptcs_enforcer import PTCSEnforcer
+from workflow_constants import DUAL_CONFIDENCE_THRESHOLDS, DUAL_CONFIDENCE_WEIGHTS
 
 
 # ============================================================================
@@ -98,18 +99,12 @@ class DualConfidenceCalculator:
     - SRCS: 40% (gated, deep quality)
     """
 
-    # Weights
-    PTCS_WEIGHT = 0.60
-    SRCS_WEIGHT = 0.40
+    # Weights (from SOT-A)
+    PTCS_WEIGHT = DUAL_CONFIDENCE_WEIGHTS["ptcs"]
+    SRCS_WEIGHT = DUAL_CONFIDENCE_WEIGHTS["srcs"]
 
-    # Default thresholds
-    DEFAULT_THRESHOLDS = {
-        'ptcs_agent': 70,
-        'ptcs_wave': 70,
-        'ptcs_phase': 75,
-        'srcs_wave': 75,
-        'srcs_phase': 75
-    }
+    # Default thresholds (from SOT-A)
+    DEFAULT_THRESHOLDS = DUAL_CONFIDENCE_THRESHOLDS
 
     def __init__(
         self,
@@ -215,8 +210,8 @@ class DualConfidenceCalculator:
         # Calculate combined score
         dual_score = self.calculate_combined_score(wave_ptcs, wave_srcs)
 
-        # Determine if passed
-        passed = (dual_score.decision == "PASS")
+        # Determine if passed (MANUAL_REVIEW also passes with caution)
+        passed = dual_score.decision in ("PASS", "MANUAL_REVIEW")
 
         # Map decision to gate-specific decision
         if dual_score.decision == "PASS":
@@ -423,12 +418,16 @@ class DualConfidenceValidator:
             wave_srcs=wave_srcs
         )
 
-        if not decision.passed:
+        if decision.decision == "FAIL":
             raise RuntimeError(
                 f"Wave {wave_number} gate failed. "
-                f"Decision: {decision.decision}. "
                 f"Reasoning: {decision.reasoning}"
             )
+        elif decision.decision in ("PASS_WITH_CAUTION", "MANUAL_REVIEW"):
+            # Allow to continue with warning (aligned with phase gate behavior)
+            print(f"\n⚠️ WARNING: Wave {wave_number} requires review")
+            print(f"   {decision.reasoning}")
+            print(f"   Proceeding with caution...\n")
 
         return decision
 

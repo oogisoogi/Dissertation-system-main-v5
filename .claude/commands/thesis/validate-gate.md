@@ -58,13 +58,9 @@ Phase 4: Publication Strategy
 
 ```python
 import sys
-from pathlib import Path
+import subprocess
 import json
-
-# Add scripts to path
-sys.path.insert(0, str(Path.cwd() / ".claude" / "skills" / "thesis-orchestrator" / "scripts"))
-
-from gate_controller import GateController
+from pathlib import Path
 
 # Parse arguments
 args = "$ARGUMENTS".split()
@@ -73,83 +69,73 @@ if len(args) < 2:
     sys.exit(1)
 
 gate_type = args[0].lower()
-gate_number = int(args[1])
+gate_number = args[1]
 
-# Get working directory
-session_file = Path("thesis-output") / "session.json"
-if session_file.exists():
-    with open(session_file) as f:
-        session = json.load(f)
-    working_dir = Path(session["working_dir"])
-else:
-    print("❌ Error: No active session found.")
+if gate_type not in ("wave", "phase"):
+    print(f"❌ Error: Invalid gate type '{gate_type}'. Use 'wave' or 'phase'.")
     sys.exit(1)
 
-# Initialize controller
-controller = GateController(working_dir=working_dir)
+# Find working directory from session marker
+marker_file = Path("thesis-output") / ".current-working-dir.txt"
+if marker_file.exists():
+    working_dir = Path(marker_file.read_text().strip())
+else:
+    print("❌ Error: No active session found (.current-working-dir.txt missing)")
+    sys.exit(1)
 
-# Validate gate
+# Locate the deterministic gate validation script
+scripts_dir = Path(".claude") / "skills" / "thesis-orchestrator" / "scripts"
+validate_script = scripts_dir / "validate_gate.py"
+
+if not validate_script.exists():
+    print(f"❌ Error: validate_gate.py not found at {validate_script}")
+    sys.exit(1)
+
+# Execute deterministic gate validation (no LLM, pure Python computation)
 print(f"\n🚪 Validating {gate_type.capitalize()} Gate {gate_number}...")
+print(f"   Using deterministic validator: validate_gate.py")
 print("="*70)
 
+result = subprocess.run(
+    [sys.executable, str(validate_script), gate_type, gate_number, "--dir", str(working_dir)],
+    capture_output=True, text=True
+)
+
 try:
-    if gate_type == "wave":
-        # Calculate Wave pTCS and SRCS
-        wave_ptcs = 82.0  # Placeholder - actual implementation calculates this
-        wave_srcs = 78.0   # Placeholder
+    gate_result = json.loads(result.stdout)
+except json.JSONDecodeError:
+    print(f"❌ Error: Failed to parse gate validation output")
+    if result.stderr:
+        print(f"   stderr: {result.stderr[:500]}")
+    sys.exit(1)
 
-        decision = controller.validate_wave_gate(
-            gate_number=gate_number,
-            wave_ptcs=wave_ptcs,
-            wave_srcs=wave_srcs,
-            auto_retry=True
-        )
-
-    elif gate_type == "phase":
-        # Calculate Phase pTCS and SRCS
-        phase_ptcs = 80.5  # Placeholder
-        phase_srcs = 77.0   # Placeholder
-
-        decision = controller.validate_phase_gate(
-            gate_number=gate_number,
-            phase_ptcs=phase_ptcs,
-            phase_srcs=phase_srcs,
-            auto_retry=True
-        )
-
-    else:
-        print(f"❌ Error: Invalid gate type '{gate_type}'. Use 'wave' or 'phase'.")
-        sys.exit(1)
-
-    # Display result
+# Display result
+if "error" in gate_result:
+    print(f"\n❌ Error: {gate_result['error']}")
+else:
     print(f"\n📊 Gate Scores:")
-    print(f"  pTCS: {decision.ptcs}/100")
-    print(f"  SRCS: {decision.srcs}/100")
-    print(f"  Combined: {decision.combined}/100")
+    print(f"  SRCS: {gate_result.get('srcs_score', 0)}/100")
+    print(f"  Consistency: {gate_result.get('consistency_score', 0)}/100")
+    print(f"  pTCS (proxy): {gate_result.get('ptcs_proxy', 0)}/100")
 
-    print(f"\n🎯 Decision: {decision.decision}")
-    if decision.passed:
+    print(f"\n🎯 Decision: {gate_result['decision']}")
+    if gate_result.get('passed'):
         print(f"  ✅ Gate {gate_number} PASSED")
     else:
         print(f"  ❌ Gate {gate_number} FAILED")
 
     print(f"\n💬 Reasoning:")
-    print(f"  {decision.reasoning}")
+    print(f"  {gate_result.get('reasoning', 'N/A')}")
 
-    print("="*70)
+print("="*70)
 
-    # Save gate status
-    gate_status_file = working_dir / f"gate-status-{gate_type}-{gate_number}.json"
-    with open(gate_status_file, 'w') as f:
-        json.dump(decision.to_dict(), f, indent=2)
+# Save gate status
+gate_status_file = working_dir / f"gate-status-{gate_type}-{gate_number}.json"
+with open(gate_status_file, 'w') as f:
+    json.dump(gate_result, f, indent=2, ensure_ascii=False)
+print(f"\n💾 Gate status saved to: {gate_status_file}")
 
-    print(f"\n💾 Gate status saved to: {gate_status_file}")
-
-    sys.exit(0 if decision.passed else 1)
-
-except RuntimeError as e:
-    print(f"\n❌ Gate validation failed: {e}")
-    sys.exit(1)
+sys.exit(0 if gate_result.get('passed') else 1)
 ```
 
 ## Auto-Retry 로직

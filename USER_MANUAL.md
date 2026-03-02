@@ -205,7 +205,7 @@
 ### 최초 설치
 ```bash
 # 프로젝트 디렉토리 진입
-cd Dissertation-system-main-v4
+cd Dissertation-system-main-v5
 
 # Python 의존성 설치
 pip install -e ".[dev]"
@@ -2689,6 +2689,6 @@ Round 4: 최종 다듬기
 
 ---
 
-*최종 업데이트: 2026-01-31*
-*버전: v4.0 - Simulation-Reading Edition*
+*최종 업데이트: 2026-03-01*
+*버전: v5.0 - Quality Architecture v4 Edition*
 *문의: GitHub Issues*

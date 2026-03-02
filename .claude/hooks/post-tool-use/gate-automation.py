@@ -36,6 +36,8 @@ try:
     _IMPORTS_OK = True
 except ImportError:
     _IMPORTS_OK = False
+    # v4: No gate validation possible without imports — exit cleanly.
+    # Fake fallback scores (85, 85.7, 8.7) are worse than no validation.
 
 
 # Gate definitions (step → gate_name mapping)
@@ -135,12 +137,14 @@ def execute_cross_validation_gate(session_dir: Path, gate_config: Dict) -> Tuple
         print(f"   Found {len(wave_files)} wave file(s) to validate")
 
         # Execute cross-validation via cross_validator module
-        if _IMPORTS_OK:
-            gate_num = int(gate_config['gate_name'].replace('gate', ''))
-            validation = validate_wave(temp_dir=lit_dir, wave=gate_num)
-            consistency_score = validation.get('consistency_score', 0)
-        else:
-            consistency_score = 85  # Fallback when imports unavailable
+        if not _IMPORTS_OK:
+            result['details']['error'] = "Required modules not available (cross_validator)"
+            print("   ⚠️  Skipping: imports unavailable — no fake scores")
+            return False, result
+
+        gate_num = int(gate_config['gate_name'].replace('gate', ''))
+        validation = validate_wave(temp_dir=lit_dir, wave=gate_num)
+        consistency_score = validation.get('consistency_score', 0)
 
         result['score'] = consistency_score
         result['details'] = {
@@ -198,12 +202,14 @@ def execute_srcs_evaluation_gate(session_dir: Path, gate_config: Dict) -> Tuple[
             print(f"   Found existing SRCS evaluation: {srcs_file.name}")
 
             # Parse SRCS score via srcs_evaluator module
-            if _IMPORTS_OK:
-                srcs_result = run_srcs_evaluation(lit_dir, save_outputs=False)
-                overall = srcs_result.get('overall_scores', {})
-                srcs_score = overall.get('total', 0)
-            else:
-                srcs_score = 85.7  # Fallback
+            if not _IMPORTS_OK:
+                result['details']['error'] = "Required modules not available (srcs_evaluator)"
+                print("   ⚠️  Skipping: imports unavailable — no fake scores")
+                return False, result
+
+            srcs_result = run_srcs_evaluation(lit_dir, save_outputs=False)
+            overall = srcs_result.get('overall_scores', {})
+            srcs_score = overall.get('total', 0)
             # pTCS is calculated by ptcs_calculator, not srcs_evaluator
             # Gate hook uses placeholder; real pTCS comes from GateController
             ptcs_score = 0
@@ -267,12 +273,14 @@ def execute_quality_assurance_gate(session_dir: Path, gate_config: Dict) -> Tupl
         # Check SRCS
         srcs_file = lit_dir / "wave5-02-srcs-evaluation.md"
         if srcs_file.exists():
-            if _IMPORTS_OK:
-                srcs_result = run_srcs_evaluation(lit_dir, save_outputs=False)
-                overall = srcs_result.get('overall_scores', {})
-                srcs_score = overall.get('total', 85.7)
-            else:
-                srcs_score = 85.7  # Fallback
+            if not _IMPORTS_OK:
+                result['details']['error'] = "Required modules not available (srcs_evaluator)"
+                print("   ⚠️  Skipping: imports unavailable — no fake scores")
+                return False, result
+
+            srcs_result = run_srcs_evaluation(lit_dir, save_outputs=False)
+            overall = srcs_result.get('overall_scores', {})
+            srcs_score = overall.get('total', 0)
             result['srcs_score'] = srcs_score
         else:
             result['details']['error'] = "SRCS evaluation not found"
@@ -281,9 +289,20 @@ def execute_quality_assurance_gate(session_dir: Path, gate_config: Dict) -> Tupl
         # Check plagiarism
         plagiarism_file = lit_dir / "wave5-01-plagiarism-check.md"
         if plagiarism_file.exists():
-            # Plagiarism score is extracted from the check file
-            # (actual parsing would read the file content)
-            plagiarism_score = 8.7  # Placeholder until parser implemented
+            # Extract plagiarism score from check file via regex
+            import re
+            plag_content = plagiarism_file.read_text(encoding='utf-8')
+            plag_match = re.search(
+                r'(?:유사도|similarity|plagiarism)[^\d]*(\d+(?:\.\d+)?)\s*%',
+                plag_content, re.IGNORECASE
+            )
+            if plag_match:
+                plagiarism_score = float(plag_match.group(1))
+            else:
+                # Cannot determine plagiarism score — fail safely
+                result['details']['error'] = "Could not parse plagiarism score from check file"
+                print("   ⚠️  Plagiarism score not parseable — cannot validate")
+                return False, result
             result['plagiarism_score'] = plagiarism_score
         else:
             result['details']['error'] = "Plagiarism check not found"

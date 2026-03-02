@@ -27,6 +27,7 @@ from collections import defaultdict
 sys.path.insert(0, str(Path(__file__).parent))
 from ptcs_calculator import PTCSCalculator, ClaimPTCS, AgentPTCS, PhasePTCS
 from gate_controller import GateController, GateStatus
+from workflow_constants import ALERT_THRESHOLDS, PTCS_COLOR_BANDS
 
 
 # ============================================================================
@@ -103,13 +104,8 @@ class ConfidenceMonitor:
     - Active alerts
     """
 
-    # Alert thresholds
-    ALERT_THRESHOLDS = {
-        'claim_critical': 50,  # pTCS < 50 → critical alert
-        'claim_warning': 60,   # pTCS < 60 → warning alert
-        'agent_critical': 60,  # pTCS < 60 → critical alert
-        'agent_warning': 70,   # pTCS < 70 → warning alert
-    }
+    # Alert thresholds (from SOT-A)
+    ALERT_THRESHOLDS = ALERT_THRESHOLDS
 
     def __init__(
         self,
@@ -395,15 +391,11 @@ class ConfidenceMonitor:
         return "\n".join(lines)
 
     def _get_color_from_ptcs(self, ptcs: float) -> str:
-        """Get color coding from pTCS score."""
-        if ptcs <= 60:
-            return 'red'
-        elif ptcs <= 70:
-            return 'yellow'
-        elif ptcs <= 85:
-            return 'cyan'
-        else:
-            return 'green'
+        """Get color coding from pTCS score (SOT-A: PTCS_COLOR_BANDS)."""
+        for color, (low, high) in PTCS_COLOR_BANDS.items():
+            if low <= ptcs <= high:
+                return color
+        return 'red'
 
     # ========================================================================
     # Snapshot
@@ -417,10 +409,15 @@ class ConfidenceMonitor:
         """
         # Claim statistics
         total_claims = len(self.claim_history)
-        low_count = sum(1 for c in self.claim_history if c.ptcs < 60)
-        medium_count = sum(1 for c in self.claim_history if 60 <= c.ptcs <= 70)
-        good_count = sum(1 for c in self.claim_history if 71 <= c.ptcs <= 85)
-        high_count = sum(1 for c in self.claim_history if c.ptcs >= 86)
+        # Binning uses SOT-A PTCS_COLOR_BANDS thresholds
+        _r = PTCS_COLOR_BANDS["red"]
+        _y = PTCS_COLOR_BANDS["yellow"]
+        _c = PTCS_COLOR_BANDS["cyan"]
+        _g = PTCS_COLOR_BANDS["green"]
+        low_count = sum(1 for c in self.claim_history if _r[0] <= c.ptcs <= _r[1])
+        medium_count = sum(1 for c in self.claim_history if _y[0] <= c.ptcs <= _y[1])
+        good_count = sum(1 for c in self.claim_history if _c[0] <= c.ptcs <= _c[1])
+        high_count = sum(1 for c in self.claim_history if _g[0] <= c.ptcs <= _g[1])
 
         # Agent statistics
         completed_agents = len(self.agent_history)

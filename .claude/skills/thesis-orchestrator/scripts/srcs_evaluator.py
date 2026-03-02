@@ -12,13 +12,13 @@ from pathlib import Path
 from typing import Any
 
 from cross_validator import extract_claims_from_file
-
-
-# SRCS 가중치 (연구유형별)
-SRCS_WEIGHTS_BY_TYPE = {
-    "default": {"cs": 0.35, "gs": 0.35, "us": 0.10, "vs": 0.20},
-    "philosophical": {"cs": 0.30, "gs": 0.30, "us": 0.15, "vs": 0.25},
-}
+from workflow_constants import (
+    SRCS_WEIGHTS_BY_TYPE,
+    SRCS_DEFAULT_THRESHOLD as DEFAULT_THRESHOLD,
+    SRCS_GRADE_BANDS,
+    SRCS_AXIS_GRADE_BANDS,
+    OVERCONFIDENCE_PATTERNS as _OVERCONFIDENCE_PATTERNS,
+)
 
 # Backward-compatible alias
 SRCS_WEIGHTS = SRCS_WEIGHTS_BY_TYPE["default"]
@@ -28,8 +28,6 @@ def get_srcs_weights(research_type: str = "default") -> dict:
     """Get SRCS weights for a given research type."""
     return SRCS_WEIGHTS_BY_TYPE.get(research_type, SRCS_WEIGHTS_BY_TYPE["default"])
 
-# 임계값
-DEFAULT_THRESHOLD = 75
 
 # 클레임 유형 키워드
 CLAIM_TYPE_KEYWORDS = {
@@ -38,22 +36,10 @@ CLAIM_TYPE_KEYWORDS = {
     "FACTUAL": ["total of", "number of", "consists of", "defined as", "participants", "sample", "data"],
     "INTERPRETIVE": ["suggests", "indicates", "implies", "may", "might", "could"],
     "SPECULATIVE": ["could potentially", "future", "might lead", "may result"],
+    "METHODOLOGICAL": ["method", "methodology", "procedure", "protocol",
+                       "design", "sampling", "instrument", "measure",
+                       "validity", "reliability", "rigor"],
 }
-
-# Overconfidence patterns (lightweight subset from gra_validator BLOCK/SOFTEN)
-# Used only for US (Uncertainty Score) penalty — NOT the full Hallucination Firewall
-_OVERCONFIDENCE_PATTERNS = [
-    r"모든\s*연구가?\s*일치",
-    r"항상\s*그렇",
-    r"절대로",
-    r"완벽하게",
-    r"전혀\s*없",
-    r"모두\s*동의",
-    r"100\s*%",
-    r"예외\s*없이",
-    r"확실히",
-    r"틀림없이",
-]
 
 
 def _detect_overconfidence(text: str) -> bool:
@@ -144,11 +130,58 @@ def calculate_grounding_score(claim: dict, research_type: str = "default") -> fl
         for pattern, points in philosophical_patterns:
             if re.search(pattern, text, re.IGNORECASE):
                 score += points
+    elif research_type == "qualitative":
+        # 질적 연구 근거 패턴
+        qualitative_patterns = [
+            (r"(?:theme|thematic|code|coding|category)", 15),
+            (r"(?:participant|informant|interviewee)\s+(?:reported|stated|described)", 15),
+            (r"(?:thick\s+description|rich\s+description|detailed\s+account)", 10),
+            (r"(?:triangulat|member\s+check|peer\s+debrief|audit\s+trail)", 10),
+            (r"(?:saturat|data\s+saturation|theoretical\s+saturation)", 10),
+            (r"(?:lived\s+experience|phenomeno|hermeneutic|narrative)", 10),
+            (r"(?:quotation|verbatim|in\s+vivo\s+code)", 10),
+            # Korean
+            (r"(?:주제|테마|코드|범주)\s*(?:도출|발견|확인)", 15),
+            (r"(?:참여자|면담자|응답자)\s*(?:보고|진술|기술)", 15),
+            (r"(?:삼각측정|동료검토|감사추적)", 10),
+        ]
+        for pattern, points in qualitative_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                score += points
+    elif research_type == "slr":
+        # 체계적 문헌 고찰 근거 패턴
+        slr_patterns = [
+            (r"(?:PRISMA|systematic\s+review|meta-analysis)", 15),
+            (r"(?:inclusion|exclusion)\s+criteria", 15),
+            (r"(?:database|PubMed|Scopus|Web\s+of\s+Science)\s+search", 10),
+            (r"(?:quality\s+assessment|risk\s+of\s+bias|GRADE)", 10),
+            (r"(?:screening|selection)\s+(?:process|procedure)", 10),
+            (r"(?:heterogeneity|I²|forest\s+plot|funnel\s+plot)", 10),
+        ]
+        for pattern, points in slr_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                score += points
+    elif research_type == "mixed":
+        # 혼합연구 근거 패턴 (양적+질적 모두 인정)
+        mixed_patterns = [
+            # Quantitative evidence
+            (r"(?:p\s*[<>=]|effect\s+size|significant)", 10),
+            (r"(?:\d+(?:\.\d+)?%|\d+\s*participants)", 10),
+            # Qualitative evidence
+            (r"(?:theme|code|participant\s+reported)", 10),
+            (r"(?:triangulat|convergent|sequential)", 10),
+            # Integration evidence (bonus)
+            (r"(?:integrat|mixed|combin|converg)\s+(?:method|design|approach)", 15),
+            (r"(?:quantitative|qualitative)\s+(?:strand|phase|component)", 10),
+        ]
+        for pattern, points in mixed_patterns:
+            if re.search(pattern, text, re.IGNORECASE):
+                score += points
     else:
-        # Determine claim type for pattern selection
+        # default/quantitative: 기존 empirical/statistical 분기
         claim_type = claim.get("claim_type", "") or classify_claim_type(claim)
 
-        if claim_type in ("THEORETICAL", "INTERPRETIVE", "METHODOLOGICAL"):
+        if claim_type in ("THEORETICAL", "INTERPRETIVE", "METHODOLOGICAL", "SPECULATIVE"):
             # Non-empirical grounding patterns
             theoretical_patterns = [
                 (r"(?:according\s+to|as\s+described\s+by)\s+\w+", 15),
@@ -162,7 +195,7 @@ def calculate_grounding_score(claim: dict, research_type: str = "default") -> fl
                 if re.search(pattern, text, re.IGNORECASE):
                     score += points
         else:
-            # Empirical/statistical grounding (FACTUAL, EMPIRICAL, SPECULATIVE)
+            # Empirical/statistical grounding (FACTUAL, EMPIRICAL)
             has_statistics = False
             if re.search(r"[rdb]=\s*-?\d+\.?\d*", text, re.IGNORECASE):
                 score += 25
@@ -365,17 +398,11 @@ def evaluate_all_claims(claims: list[dict], threshold: float = DEFAULT_THRESHOLD
 
 
 def assign_grade(score: float) -> str:
-    """등급 부여"""
-    if score >= 90:
-        return "A"
-    elif score >= 80:
-        return "B"
-    elif score >= 75:
-        return "C"
-    elif score >= 60:
-        return "D"
-    else:
-        return "F"
+    """등급 부여 (SOT-A: SRCS_GRADE_BANDS)"""
+    for grade in ("A", "B", "C", "D"):
+        if score >= SRCS_GRADE_BANDS[grade]:
+            return grade
+    return "F"
 
 
 def generate_summary(result: dict, output_path: Path) -> None:
@@ -496,13 +523,11 @@ def generate_quality_report(result: dict, output_path: Path) -> None:
 
 
 def _axis_grade(score: float) -> str:
-    """축별 등급"""
-    if score >= 85:
-        return "A"
-    elif score >= 70:
-        return "B"
-    else:
-        return "C"
+    """축별 등급 (SOT-A: SRCS_AXIS_GRADE_BANDS)"""
+    for grade in ("A", "B"):
+        if score >= SRCS_AXIS_GRADE_BANDS[grade]:
+            return grade
+    return "C"
 
 
 def _read_research_type(temp_dir: Path) -> str:

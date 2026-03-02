@@ -34,7 +34,9 @@ from path_utils import get_working_dir_from_session
 
 VERSION = "1.0.0"
 
-# Agent definitions per wave/phase (maps to checklist steps)
+# Agent definitions per wave/phase (maps to checklist steps).
+# NOTE: This registry aligns with workflow_constants.AGENT_STEP_MAP (SOT-A)
+# and WAVE_FILES. When adding/removing agents, update both locations.
 AGENT_REGISTRY = {
     "phase1-wave1": [
         "literature-searcher", "seminal-works-analyst",

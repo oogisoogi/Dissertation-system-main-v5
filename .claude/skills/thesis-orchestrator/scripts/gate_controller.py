@@ -31,6 +31,7 @@ from dual_confidence_system import (
     DualConfidenceValidator,
     GateDecision
 )
+from workflow_constants import MAX_RETRIES_WAVE, MAX_RETRIES_PHASE
 
 
 # ============================================================================
@@ -212,7 +213,7 @@ class GateController:
         wave_ptcs: float,
         wave_srcs: float,
         auto_retry: bool = True,
-        max_retries: int = 3
+        max_retries: int = MAX_RETRIES_WAVE
     ) -> GateDecision:
         """Validate Wave Gate with dual confidence.
 
@@ -221,7 +222,7 @@ class GateController:
             wave_ptcs: Wave-level pTCS score
             wave_srcs: Wave-level SRCS score
             auto_retry: Automatically retry if failed (default True)
-            max_retries: Maximum retry attempts (default 3)
+            max_retries: Maximum retry attempts (from SOT-A)
 
         Returns:
             GateDecision
@@ -323,7 +324,7 @@ class GateController:
         phase_ptcs: float,
         phase_srcs: float,
         auto_retry: bool = True,
-        max_retries: int = 2
+        max_retries: int = MAX_RETRIES_PHASE
     ) -> GateDecision:
         """Validate Phase Gate with dual confidence.
 
@@ -332,7 +333,7 @@ class GateController:
             phase_ptcs: Phase-level pTCS score
             phase_srcs: Phase-level SRCS score
             auto_retry: Automatically retry if failed (default True)
-            max_retries: Maximum retry attempts (default 2)
+            max_retries: Maximum retry attempts (from SOT-A)
 
         Returns:
             GateDecision
@@ -385,7 +386,7 @@ class GateController:
 
             elif decision.decision == "MANUAL_REVIEW":
                 # MANUAL REVIEW required
-                gate_status.status = "passed"  # Allow to continue
+                gate_status.status = "passed_with_caution"  # Distinct from clean "passed"
                 gate_status.completed_at = datetime.now().isoformat()
 
                 self._log(f"⚠️  PHASE {phase_number} GATE: MANUAL REVIEW REQUIRED")
@@ -461,9 +462,9 @@ class GateController:
         # Collect all gates
         all_gates = list(self.gate_statuses.values())
 
-        # Count by status
+        # Count by status (passed_with_caution counts as passed)
         total_gates = len(all_gates)
-        passed_gates = sum(1 for g in all_gates if g.status == "passed")
+        passed_gates = sum(1 for g in all_gates if g.status in ("passed", "passed_with_caution"))
         failed_gates = sum(1 for g in all_gates if g.status == "failed")
         pending_gates = sum(1 for g in all_gates if g.status == "pending")
 

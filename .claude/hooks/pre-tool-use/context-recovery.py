@@ -300,6 +300,22 @@ def hook(context: Dict[str, any]) -> Dict[str, any]:
     if not session_dir:
         return context  # Can't recover without session
 
+    # Timestamp guard: prevent re-triggering within 60 seconds (v4)
+    import tempfile
+    guard_file = Path(tempfile.gettempdir()) / "dissertation-recovery-timestamp"
+    now = datetime.now().timestamp()
+    if guard_file.exists():
+        try:
+            last_recovery = float(guard_file.read_text().strip())
+            if now - last_recovery < 60:
+                return context  # Too soon since last recovery
+        except (ValueError, OSError):
+            pass
+    try:
+        guard_file.write_text(str(now))
+    except OSError:
+        pass
+
     print(f"\n{'='*60}")
     print(f"🔄 Context Recovery Initiated")
     print(f"{'='*60}")

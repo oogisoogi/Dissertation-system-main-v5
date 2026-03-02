@@ -12,51 +12,14 @@ from pathlib import Path
 from typing import Any
 
 
-# Wave별 예상 파일 정의
-WAVE_FILES = {
-    1: [
-        "01-literature-search-strategy.md",
-        "02-seminal-works-analysis.md",
-        "03-research-trend-analysis.md",
-        "04-methodology-scan.md",
-    ],
-    2: [
-        "05-theoretical-framework.md",
-        "06-empirical-evidence-synthesis.md",
-        "07-research-gap-analysis.md",
-        "08-variable-relationship-analysis.md",
-    ],
-    3: [
-        "09-critical-review.md",
-        "10-methodology-critique.md",
-        "11-limitation-analysis.md",
-        "12-future-research-directions.md",
-    ],
-    4: [
-        "13-literature-synthesis.md",
-        "14-conceptual-model.md",
-    ],
-    5: [
-        "15-plagiarism-report.md",
-        "quality-report.md",
-    ],
-}
-
-# 심각도 가중치
-SEVERITY_WEIGHTS = {
-    "HIGH": 15,
-    "MEDIUM": 8,
-    "LOW": 3,
-}
-
-# 모순 탐지 패턴
-CONTRADICTION_PATTERNS = [
-    (r"positive effect", r"negative effect"),
-    (r"significant", r"not significant"),
-    (r"increases", r"decreases"),
-    (r"supports", r"contradicts"),
-    (r"confirms", r"refutes"),
-]
+from workflow_constants import (
+    WAVE_FILES,
+    CROSS_VALIDATOR_SEVERITY_WEIGHTS as SEVERITY_WEIGHTS,
+    CONTRADICTION_PATTERNS,
+    CROSS_VALIDATOR_STOPWORDS,
+    CROSS_VALIDATOR_MIN_SHARED_WORDS,
+    CROSS_VALIDATOR_MIN_WORD_LENGTH,
+)
 
 
 def extract_claims_from_file(file_path: Path) -> list[dict]:
@@ -69,7 +32,17 @@ def extract_claims_from_file(file_path: Path) -> list[dict]:
 
 
 def extract_claims_from_content(content: str, source: str = "") -> list[dict]:
-    """컨텐츠에서 Claims 추출"""
+    """컨텐츠에서 Claims 추출.
+
+    Args:
+        content: Markdown content containing ## Claims section with ```yaml block
+        source: Source file path for diagnostics
+
+    Returns:
+        List of claim dictionaries
+    """
+    import warnings
+
     claims = []
 
     # Claims 섹션 찾기
@@ -78,10 +51,21 @@ def extract_claims_from_content(content: str, source: str = "") -> list[dict]:
     )
 
     if not claims_match:
+        if source:
+            warnings.warn(
+                f"No '## Claims' section with ```yaml block found in {source}. "
+                f"Cross-validation will skip this file.",
+                stacklevel=2,
+            )
         return []
 
     yaml_content = claims_match.group(1).strip()
     if not yaml_content:
+        if source:
+            warnings.warn(
+                f"Empty YAML block in Claims section of {source}.",
+                stacklevel=2,
+            )
         return []
 
     try:
@@ -93,8 +77,22 @@ def extract_claims_from_content(content: str, source: str = "") -> list[dict]:
                     if isinstance(claim, dict):
                         claim["source_file"] = source
                         claims.append(claim)
-    except yaml.YAMLError:
-        pass
+            else:
+                warnings.warn(
+                    f"'claims' key in {source} is not a list (got {type(claims_list).__name__}).",
+                    stacklevel=2,
+                )
+        elif data:
+            warnings.warn(
+                f"YAML in {source} parsed but missing 'claims' key. "
+                f"Available keys: {list(data.keys()) if isinstance(data, dict) else 'N/A'}",
+                stacklevel=2,
+            )
+    except yaml.YAMLError as e:
+        warnings.warn(
+            f"YAML parse error in Claims section of {source}: {e}",
+            stacklevel=2,
+        )
 
     return claims
 
@@ -150,18 +148,24 @@ def detect_inconsistencies(claims: list[dict]) -> list[dict]:
 
 
 def check_contradiction(text1: str, text2: str) -> dict | None:
-    """모순 패턴 검사"""
+    """모순 패턴 검사 (주제 유사성 검증 포함)"""
     for pattern1, pattern2 in CONTRADICTION_PATTERNS:
-        # 같은 주제에 대해 반대 패턴이 있는지 확인
-        has_p1_in_t1 = re.search(pattern1, text1)
-        has_p2_in_t2 = re.search(pattern2, text2)
-        has_p1_in_t2 = re.search(pattern1, text2)
-        has_p2_in_t1 = re.search(pattern2, text1)
+        has_p1_in_t1 = re.search(pattern1, text1, re.IGNORECASE)
+        has_p2_in_t2 = re.search(pattern2, text2, re.IGNORECASE)
+        has_p1_in_t2 = re.search(pattern1, text2, re.IGNORECASE)
+        has_p2_in_t1 = re.search(pattern2, text1, re.IGNORECASE)
 
         if (has_p1_in_t1 and has_p2_in_t2) or (has_p1_in_t2 and has_p2_in_t1):
-            # 공통 주제 추출 (간단한 휴리스틱)
-            common_words = set(text1.split()) & set(text2.split())
-            topic_words = [w for w in common_words if len(w) > 3]
+            # Topic similarity check — skip if texts are about different topics
+            if not similar_context(text1, text2):
+                continue
+
+            common_words = set(text1.lower().split()) & set(text2.lower().split())
+            topic_words = [
+                w for w in common_words
+                if w not in CROSS_VALIDATOR_STOPWORDS
+                and len(w) >= CROSS_VALIDATOR_MIN_WORD_LENGTH
+            ]
             topic = " ".join(topic_words[:3]) if topic_words else "effect direction"
             return {"topic": topic}
 
@@ -204,11 +208,19 @@ def check_numeric_inconsistency(text1: str, text2: str) -> dict | None:
 
 
 def similar_context(ctx1: str, ctx2: str) -> bool:
-    """맥락 유사성 검사"""
-    words1 = set(ctx1.lower().split())
-    words2 = set(ctx2.lower().split())
+    """맥락 유사성 검사 (불용어 제외, 의미어 기반)"""
+    words1 = {
+        w for w in ctx1.lower().split()
+        if w not in CROSS_VALIDATOR_STOPWORDS
+        and len(w) >= CROSS_VALIDATOR_MIN_WORD_LENGTH
+    }
+    words2 = {
+        w for w in ctx2.lower().split()
+        if w not in CROSS_VALIDATOR_STOPWORDS
+        and len(w) >= CROSS_VALIDATOR_MIN_WORD_LENGTH
+    }
     common = words1 & words2
-    return len(common) >= 1
+    return len(common) >= CROSS_VALIDATOR_MIN_SHARED_WORDS
 
 
 def parse_numeric(value: str) -> float | None:

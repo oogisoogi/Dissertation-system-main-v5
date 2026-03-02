@@ -26,51 +26,14 @@ VALID_CLAIM_TYPES = {
 # Valid source types
 VALID_SOURCE_TYPES = {"PRIMARY", "SECONDARY", "TERTIARY"}
 
-# Confidence thresholds by claim type
-CONFIDENCE_THRESHOLDS = {
-    "FACTUAL": 95,
-    "EMPIRICAL": 85,
-    "THEORETICAL": 75,
-    "METHODOLOGICAL": 80,
-    "INTERPRETIVE": 70,
-    "SPECULATIVE": 60,
-}
+# Import from SOT-A (workflow_constants)
+from workflow_constants import (
+    GRA_CONFIDENCE_THRESHOLDS as CONFIDENCE_THRESHOLDS,
+    HALLUCINATION_PATTERNS,
+)
 
 # Claim types that require PRIMARY source
 REQUIRES_PRIMARY = {"EMPIRICAL", "THEORETICAL"}
-
-# Hallucination patterns
-HALLUCINATION_PATTERNS = {
-    "BLOCK": [
-        r"모든\s*연구가?\s*일치",
-        r"항상\s*그렇",
-        r"절대로",
-        r"완벽하게",
-        r"전혀\s*없",
-        r"모두\s*동의",
-    ],
-    "REQUIRE_SOURCE": [
-        r"p\s*[<>=]\s*\.?\d+",
-        r"효과크기\s*[drf]\s*=\s*[\d.]+",
-        r"[rβ]\s*=\s*[\d.]+",
-        r"\d+%의\s*분산",
-    ],
-    "SOFTEN": [
-        r"100\s*%",  # Moved from BLOCK: 맥락에 따라 적절할 수 있음
-        r"예외\s*없이",  # Moved from BLOCK: 학술적 맥락에서 사용 가능
-        r"확실히",
-        r"명백히",
-        r"분명히",
-        r"틀림없이",
-        r"의심의\s*여지\s*없이",
-    ],
-    "VERIFY": [
-        r"일반적으로",
-        r"대부분의?\s*연구",
-        r"많은\s*연구",
-        r"흔히",
-    ],
-}
 
 # SRCS scoring is delegated to srcs_evaluator (single source of truth)
 from srcs_evaluator import (
@@ -189,15 +152,23 @@ def validate_claim(claim: dict[str, Any]) -> tuple[bool, list[str]]:
             errors.append(f"{claim['claim_type']} claim requires at least one PRIMARY source")
             is_valid = False
 
-    # Check confidence threshold
+    # Check confidence threshold (tiered enforcement)
     threshold = get_confidence_threshold(claim["claim_type"])
     confidence = claim.get("confidence", 0)
+    claim_type = claim["claim_type"]
     if confidence < threshold:
         errors.append(
-            f"Confidence {confidence} below threshold {threshold} for {claim['claim_type']}"
+            f"Confidence {confidence} below threshold {threshold} for {claim_type}"
         )
-        # This is a warning, not a hard failure
-        # is_valid = False
+        # Tiered hard fail based on claim type
+        if claim_type in ("FACTUAL", "EMPIRICAL", "METHODOLOGICAL"):
+            is_valid = False
+        elif claim_type == "THEORETICAL":
+            if confidence < (threshold - 10):  # 65 미만 hard fail
+                is_valid = False
+        else:  # INTERPRETIVE, SPECULATIVE
+            if confidence < (threshold - 15):  # 55/45 미만 hard fail
+                is_valid = False
 
     return is_valid, errors
 
@@ -207,9 +178,9 @@ def calculate_citation_score(claim: dict[str, Any]) -> float:
     return _srcs_calculate_citation_score(claim)
 
 
-def calculate_grounding_score(claim: dict[str, Any]) -> float:
+def calculate_grounding_score(claim: dict[str, Any], research_type: str = "default") -> float:
     """Calculate Grounding Score (GS) - delegates to srcs_evaluator."""
-    return _srcs_calculate_grounding_score(claim)
+    return _srcs_calculate_grounding_score(claim, research_type=research_type)
 
 
 def calculate_uncertainty_score(claim: dict[str, Any]) -> float:
@@ -217,29 +188,32 @@ def calculate_uncertainty_score(claim: dict[str, Any]) -> float:
     return _srcs_calculate_uncertainty_score(claim)
 
 
-def calculate_verifiability_score(claim: dict[str, Any]) -> float:
+def calculate_verifiability_score(claim: dict[str, Any], research_type: str = "default") -> float:
     """Calculate Verifiability Score (VS) - delegates to srcs_evaluator."""
-    return _srcs_calculate_verifiability_score(claim)
+    return _srcs_calculate_verifiability_score(claim, research_type=research_type)
 
 
-def calculate_srcs_score(claim: dict[str, Any]) -> dict[str, float]:
+def calculate_srcs_score(claim: dict[str, Any], research_type: str = "default") -> dict[str, float]:
     """Calculate full SRCS score for a claim.
 
     Delegates to srcs_evaluator (single source of truth).
 
     Args:
         claim: Claim dictionary
+        research_type: Research type for weight/pattern selection
 
     Returns:
         Dictionary with individual and total scores
     """
+    from srcs_evaluator import get_srcs_weights
+
     cs = _srcs_calculate_citation_score(claim)
-    gs = _srcs_calculate_grounding_score(claim)
+    gs = _srcs_calculate_grounding_score(claim, research_type=research_type)
     us = _srcs_calculate_uncertainty_score(claim)
-    vs = _srcs_calculate_verifiability_score(claim)
+    vs = _srcs_calculate_verifiability_score(claim, research_type=research_type)
 
     scores = {"cs": cs, "gs": gs, "us": us, "vs": vs}
-    total = _srcs_calculate_weighted(scores)
+    total = _srcs_calculate_weighted(scores, research_type=research_type)
 
     return {
         "cs": round(cs, 2),
@@ -250,11 +224,14 @@ def calculate_srcs_score(claim: dict[str, Any]) -> dict[str, float]:
     }
 
 
-def generate_validation_report(claims: list[dict[str, Any]]) -> dict[str, Any]:
+def generate_validation_report(
+    claims: list[dict[str, Any]], research_type: str = "default"
+) -> dict[str, Any]:
     """Generate a validation report for multiple claims.
 
     Args:
         claims: List of claim dictionaries
+        research_type: Research type for SRCS weight/pattern selection
 
     Returns:
         Validation report dictionary
@@ -265,7 +242,7 @@ def generate_validation_report(claims: list[dict[str, Any]]) -> dict[str, Any]:
 
     for claim in claims:
         is_valid, errors = validate_claim(claim)
-        srcs_scores = calculate_srcs_score(claim)
+        srcs_scores = calculate_srcs_score(claim, research_type=research_type)
 
         if is_valid:
             total_valid += 1
@@ -368,7 +345,8 @@ def main():
             data = json.load(f)
 
         claims = data.get("claims", [data] if "id" in data else [])
-        report = generate_validation_report(claims)
+        research_type = data.get("research_type", "default")
+        report = generate_validation_report(claims, research_type=research_type)
         print(json.dumps(report, ensure_ascii=False, indent=2))
 
     elif args.command == "check":

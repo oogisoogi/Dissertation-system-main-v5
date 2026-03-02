@@ -441,7 +441,11 @@ def hook(context: Dict[str, any]) -> Dict[str, any]:
         working_dir=working_dir
     )
 
-    # Log diagnostic info
+    # Early return if RLM not needed — skip logging entirely (v4: minimize I/O)
+    if not should_activate:
+        return context
+
+    # Log diagnostic info (only when activated)
     log_dir = Path(working_dir) / "thesis-output" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -449,7 +453,7 @@ def hook(context: Dict[str, any]) -> Dict[str, any]:
     with open(log_file, 'a', encoding='utf-8') as f:
         f.write(f"\n--- RLM Check: {subagent_type} ---\n")
         f.write(json.dumps(diagnostic, indent=2, ensure_ascii=False))
-        f.write(f"\nDecision: {'ACTIVATE' if should_activate else 'SKIP'}\n")
+        f.write(f"\nDecision: ACTIVATE\n")
 
     # Inject RLM instructions if activated
     if should_activate:

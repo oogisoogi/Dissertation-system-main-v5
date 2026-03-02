@@ -207,3 +207,196 @@ AUTOPILOT_DEFAULTS = {
     'paused': False,
     'pause_reason': None,
 }
+
+# ===========================================================================
+# Quality Gate Thresholds & Scoring Constants (SOT-A)
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Quality Gate Thresholds
+# ---------------------------------------------------------------------------
+SRCS_DEFAULT_THRESHOLD = 75
+PLAGIARISM_THRESHOLD = 15
+DWC_THRESHOLD = 80
+
+PTCS_THRESHOLDS = {
+    "claim": 60, "agent": 70, "phase": 75, "workflow": 75,
+}
+PTCS_COLOR_BANDS = {
+    "red": (0, 60), "yellow": (61, 70), "cyan": (71, 85), "green": (86, 100),
+}
+DUAL_CONFIDENCE_THRESHOLDS = {
+    "ptcs_agent": 70, "ptcs_wave": 70, "ptcs_phase": 75,
+    "srcs_wave": 75, "srcs_phase": 75,
+}
+DUAL_CONFIDENCE_WEIGHTS = {"ptcs": 0.60, "srcs": 0.40}
+PHASE_WEIGHTS = {0: 0.05, 1: 0.30, 2: 0.20, 3: 0.35, 4: 0.10}
+
+# ---------------------------------------------------------------------------
+# SRCS Scoring
+# ---------------------------------------------------------------------------
+SRCS_WEIGHTS_BY_TYPE = {
+    "default":       {"cs": 0.35, "gs": 0.35, "us": 0.10, "vs": 0.20},
+    "quantitative":  {"cs": 0.35, "gs": 0.35, "us": 0.10, "vs": 0.20},
+    "qualitative":   {"cs": 0.40, "gs": 0.25, "us": 0.15, "vs": 0.20},
+    "philosophical": {"cs": 0.30, "gs": 0.30, "us": 0.15, "vs": 0.25},
+    "slr":           {"cs": 0.40, "gs": 0.30, "us": 0.10, "vs": 0.20},
+    "mixed":         {"cs": 0.35, "gs": 0.30, "us": 0.10, "vs": 0.25},
+}
+SRCS_GRADE_BANDS = {"A": 90, "B": 80, "C": 75, "D": 60}  # >= threshold
+SRCS_AXIS_GRADE_BANDS = {"A": 85, "B": 70}  # per-axis grade (CS/GS/US/VS)
+
+# ---------------------------------------------------------------------------
+# Retry/Operational
+# ---------------------------------------------------------------------------
+MAX_RETRIES_AGENT = 3
+MAX_RETRIES_WAVE = 3
+MAX_RETRIES_PHASE = 2
+
+# pTCS proxy weights (used when real claim-level pTCS is unavailable)
+PTCS_PROXY_WEIGHTS = {"srcs": 0.70, "consistency": 0.30}
+
+# ---------------------------------------------------------------------------
+# Cross-Validator
+# ---------------------------------------------------------------------------
+CROSS_VALIDATOR_MIN_SHARED_WORDS = 2
+CROSS_VALIDATOR_MIN_WORD_LENGTH = 4
+CROSS_VALIDATOR_SEVERITY_WEIGHTS = {"HIGH": 15, "MEDIUM": 8, "LOW": 3}
+CONTRADICTION_PATTERNS = [
+    (r"positive\s+(?:effect|impact|relationship|correlation|association)",
+     r"negative\s+(?:effect|impact|relationship|correlation|association)"),
+    (r"(?:statistically\s+)?significant",
+     r"(?:not|no)\s+(?:statistically\s+)?significant"),
+    (r"(?:supports?|confirms?|validates?)",
+     r"(?:contradicts?|refutes?|rejects?)"),
+    (r"(?:increases?|improves?|enhances?)",
+     r"(?:decreases?|reduces?|diminishes?)"),
+    (r"(?:strong|robust|substantial)",
+     r"(?:weak|fragile|negligible)"),
+    # Korean contradiction patterns
+    (r"긍정적\s*(?:영향|효과|관계)", r"부정적\s*(?:영향|효과|관계)"),
+    (r"통계적으로\s*유의", r"통계적으로\s*유의하지\s*않"),
+    (r"(?:지지|확인|검증)", r"(?:반박|부정|기각)"),
+    (r"(?:증가|향상|강화)", r"(?:감소|저하|약화)"),
+]
+CROSS_VALIDATOR_STOPWORDS = {
+    "the", "a", "an", "is", "was", "are", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "shall", "can", "to", "of", "in", "for",
+    "on", "with", "at", "by", "from", "as", "into", "through", "during",
+    "before", "after", "above", "below", "between", "under", "about",
+    "and", "but", "or", "nor", "not", "no", "so", "if", "than", "that",
+    "this", "these", "those", "it", "its", "they", "them", "their",
+    "we", "our", "he", "she", "his", "her", "which", "what", "who",
+    "study", "research", "results", "data", "analysis", "found",
+    "showed", "indicated", "demonstrated", "revealed", "suggest",
+}
+
+# ---------------------------------------------------------------------------
+# GRA Hallucination Firewall (bilingual)
+# ---------------------------------------------------------------------------
+GRA_CONFIDENCE_THRESHOLDS = {
+    "FACTUAL": 95, "EMPIRICAL": 85, "THEORETICAL": 75,
+    "METHODOLOGICAL": 80, "INTERPRETIVE": 70, "SPECULATIVE": 60,
+}
+HALLUCINATION_PATTERNS = {
+    "BLOCK": [
+        # Korean
+        r"모든\s*연구가?\s*일치", r"항상\s*그렇", r"절대로",
+        r"완벽하게", r"전혀\s*없", r"모두\s*동의",
+        # English
+        r"all\s+(?:research|studies|evidence)\s+(?:agrees?|confirms?|shows?)",
+        r"(?:definitively|conclusively)\s+(?:proven|established|demonstrated)",
+        r"without\s+any\s+exception",
+        r"(?:absolutely|unquestionably|indisputably)\s+(?:certain|true|clear)",
+        r"there\s+is\s+no\s+(?:doubt|question|debate)",
+        r"every\s+(?:scholar|researcher|expert)\s+agrees?",
+    ],
+    "REQUIRE_SOURCE": [
+        # Korean
+        r"p\s*[<>=]\s*\.?\d+", r"효과크기\s*[drf]\s*=\s*[\d.]+",
+        r"[rβ]\s*=\s*[\d.]+", r"\d+%의\s*분산",
+        # English
+        r"(?:effect\s+size|Cohen'?s?\s*d)\s*=\s*[\d.]+",
+        r"(?:r|β|beta)\s*=\s*[\d.]+", r"\d+%\s*(?:of\s+)?(?:the\s+)?variance",
+        r"(?:OR|RR|HR)\s*=\s*[\d.]+",
+    ],
+    "SOFTEN": [
+        # Korean
+        r"100\s*%", r"예외\s*없이", r"확실히", r"명백히", r"분명히",
+        r"틀림없이", r"의심의\s*여지\s*없이",
+        # English
+        r"100\s*%\s*(?:of|certain|sure|agree)", r"without\s+(?:any\s+)?exception",
+        r"(?:certainly|clearly|obviously|undoubtedly|undeniably)\s+\w+",
+        r"it\s+is\s+(?:clear|obvious|evident|undeniable)\s+that",
+        r"beyond\s+(?:any\s+)?(?:doubt|question)",
+    ],
+    "VERIFY": [
+        # Korean
+        r"일반적으로", r"대부분의?\s*연구", r"많은\s*연구", r"흔히",
+        # English
+        r"(?:generally|typically|usually|commonly|often)",
+        r"(?:most|many|numerous)\s+(?:studies|researchers?|scholars?)",
+        r"it\s+is\s+(?:widely|commonly|generally)\s+(?:accepted|known|recognized)",
+        r"the\s+(?:majority|bulk)\s+of\s+(?:research|evidence|literature)",
+    ],
+}
+# Overconfidence subset (used by srcs_evaluator US scoring)
+OVERCONFIDENCE_PATTERNS = (
+    HALLUCINATION_PATTERNS["BLOCK"] + HALLUCINATION_PATTERNS["SOFTEN"]
+)
+
+# ---------------------------------------------------------------------------
+# Alert Thresholds (confidence_monitor)
+# ---------------------------------------------------------------------------
+ALERT_THRESHOLDS = {
+    "claim_critical": 50, "claim_warning": 60,
+    "agent_critical": 60, "agent_warning": 70,
+}
+
+# ---------------------------------------------------------------------------
+# AGENT_OUTPUT_FILES: agent role → actual output filename (SOT-A)
+# Verified against 5 completed projects' actual output files.
+# ---------------------------------------------------------------------------
+AGENT_OUTPUT_FILES = {
+    # Wave 1 (Literature Search)
+    "literature-searcher":           "01-literature-search-strategy.md",
+    "seminal-works-analyst":         "02-seminal-works-analysis.md",
+    "trend-analyst":                 "03-research-trend-analysis.md",
+    "methodology-scanner":           "04-methodology-scan.md",
+    # Wave 2 (Theoretical Analysis)
+    "theoretical-framework-analyst": "05-theoretical-framework.md",
+    "empirical-evidence-analyst":    "06-empirical-evidence-synthesis.md",
+    "gap-identifier":                "07-research-gap-analysis.md",
+    "variable-relationship-analyst": "08-variable-relationship-analysis.md",
+    # Wave 3 (Critical Review)
+    "critical-reviewer":             "09-critical-review.md",
+    "methodology-critic":            "10-methodology-critique.md",
+    "limitation-analyst":            "11-limitation-analysis.md",
+    "future-direction-analyst":      "12-future-research-directions.md",
+    # Wave 4 (Synthesis)
+    "synthesis-agent":               "13-literature-synthesis.md",
+    "conceptual-model-builder":      "14-conceptual-model.md",
+    # Wave 5 (Quality Assurance)
+    "plagiarism-checker":            "15-plagiarism-report.md",
+    "unified-srcs-evaluator":        "quality-report.md",
+    "research-synthesizer":          "research-synthesis.md",
+}
+
+_WAVE_AGENTS = {
+    1: ["literature-searcher", "seminal-works-analyst",
+        "trend-analyst", "methodology-scanner"],
+    2: ["theoretical-framework-analyst", "empirical-evidence-analyst",
+        "gap-identifier", "variable-relationship-analyst"],
+    3: ["critical-reviewer", "methodology-critic",
+        "limitation-analyst", "future-direction-analyst"],
+    4: ["synthesis-agent", "conceptual-model-builder"],
+    5: ["plagiarism-checker", "unified-srcs-evaluator",
+        "research-synthesizer"],
+}
+
+# WAVE_FILES: derived from AGENT_OUTPUT_FILES (never define filenames here directly)
+WAVE_FILES = {
+    wave: [AGENT_OUTPUT_FILES[agent] for agent in agents]
+    for wave, agents in _WAVE_AGENTS.items()
+}

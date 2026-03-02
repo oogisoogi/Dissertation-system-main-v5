@@ -28,7 +28,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 # Retry configuration
 MAX_RETRIES = 3
-RETRY_DELAY_SECONDS = 5
+RETRY_DELAY_SECONDS = 0  # v4: Removed sleep(5) — no consuming process reads the retry signal
 
 # Failure detection patterns
 FAILURE_PATTERNS = [
@@ -332,11 +332,7 @@ def hook(context: Dict[str, any]) -> Dict[str, any]:
         'reason': reason
     })
 
-    print(f"   Waiting {RETRY_DELAY_SECONDS} seconds before retry...")
     print(f"{'='*60}\n")
-
-    # Delay before retry
-    time.sleep(RETRY_DELAY_SECONDS)
 
     # Modify context to trigger retry
     # Note: This is a signal to the orchestrator, not actual re-execution

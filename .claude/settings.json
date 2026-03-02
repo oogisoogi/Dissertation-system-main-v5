@@ -1,5 +1,17 @@
 {
-  "hooks": {},
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd $(git rev-parse --show-toplevel) && python3 .claude/hooks/pre-tool-use/lightweight-gra-hook.py"
+          }
+        ]
+      }
+    ]
+  },
   "_disabled_hooks_reference": {
     "PreToolUse": [
       {

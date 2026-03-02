@@ -29,6 +29,7 @@ import time
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 from ptcs_calculator import PTCSCalculator, AgentPTCS
+from workflow_constants import PTCS_THRESHOLDS, MAX_RETRIES_AGENT
 
 
 # ============================================================================
@@ -77,16 +78,11 @@ class PTCSEnforcer:
     - No manual override (강제 실행)
     """
 
-    # Default thresholds (can be overridden)
-    DEFAULT_THRESHOLDS = {
-        'claim': 60,   # Claim-level: 60+ (CAUTION threshold)
-        'agent': 70,   # Agent-level: 70+ (PASS threshold)
-        'phase': 75,   # Phase-level: 75+ (PASS threshold)
-        'workflow': 75 # Workflow-level: 75+ (PASS threshold)
-    }
+    # Default thresholds (from SOT-A)
+    DEFAULT_THRESHOLDS = PTCS_THRESHOLDS
 
-    # Default max retries
-    DEFAULT_MAX_RETRIES = 3
+    # Default max retries (from SOT-A)
+    DEFAULT_MAX_RETRIES = MAX_RETRIES_AGENT
 
     def __init__(
         self,
@@ -220,7 +216,22 @@ class PTCSEnforcer:
                         # Generate and inject feedback for next attempt
                         claim_ptcs_list = [self.calc.calculate_claim_ptcs(c) for c in claims]
                         feedback = self._generate_retry_feedback(claim_ptcs_list)
+
+                        # 1. Keep existing kwarg (backward compatibility)
                         agent_kwargs['_retry_feedback'] = feedback
+
+                        # 2. Prompt injection (if caller passes prompt kwarg)
+                        if 'prompt' in agent_kwargs:
+                            feedback_text = self._format_retry_feedback(feedback)
+                            agent_kwargs['prompt'] = (
+                                f"{feedback_text}\n\n{agent_kwargs['prompt']}"
+                            )
+
+                        # 3. File-based sidecar (always written)
+                        self._write_feedback_sidecar(
+                            agent_name, attempt, feedback
+                        )
+
                         self._log_retry_feedback(feedback)
                         self._log(f"⚠️  Retrying with feedback... "
                                   f"({self.max_retries - attempt} attempts remaining)")
@@ -419,6 +430,38 @@ class PTCSEnforcer:
         if avg_grounding < 7.5:  # < 50% of max 15
             issues.append('grounding: Increase source count (target: 2+ per claim)')
         return issues
+
+    def _format_retry_feedback(self, feedback: dict) -> str:
+        """Format retry feedback as a clear text prompt prefix."""
+        lines = ["## RETRY: Previous attempt failed quality check"]
+        weakest = feedback.get("low_confidence_claims", [{}])
+        if weakest:
+            lines.append(f"- Weakest component: {weakest[0].get('weakest', 'unknown')}")
+        lines.append(f"- Average confidence: {feedback.get('avg_ptcs', 0):.1f}")
+        for weakness in feedback.get("common_weaknesses", []):
+            lines.append(f"- Issue: {weakness}")
+        lines.append("Please address these issues in your revised output.\n")
+        return "\n".join(lines)
+
+    def _write_feedback_sidecar(
+        self, agent_name: str, attempt: int, feedback: dict
+    ) -> None:
+        """Write feedback to a sidecar JSON file for external consumers."""
+        try:
+            # Look for _temp dir relative to working directory
+            temp_dir = Path.cwd() / "_temp"
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            feedback_file = temp_dir / f"retry-feedback-{agent_name}.json"
+            feedback_file.write_text(json.dumps({
+                "agent": agent_name,
+                "attempt": attempt,
+                "feedback": feedback,
+                "formatted": self._format_retry_feedback(feedback),
+                "timestamp": datetime.now().isoformat(),
+            }, ensure_ascii=False, indent=2))
+            self._log(f"   Feedback written to: {feedback_file}")
+        except OSError:
+            pass  # Non-critical — best effort
 
     def _log_retry_feedback(self, feedback: dict):
         """Log retry feedback in a readable format."""

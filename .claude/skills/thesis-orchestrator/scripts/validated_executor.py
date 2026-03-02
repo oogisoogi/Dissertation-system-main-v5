@@ -379,6 +379,12 @@ class ValidatedExecutor:
 def should_use_validation() -> bool:
     """Check if validation should be used based on environment variable.
 
+    Note: validation_config.py declares default="true" but we keep "false"
+    here for backward compatibility. Changing to "true" would activate
+    validation in all environments that haven't run enable-validation.sh,
+    potentially surfacing hidden failures in existing pipelines.
+    Use enable-validation.sh / disable-validation.sh to opt in/out.
+
     Returns:
         True if USE_VALIDATION=true, False otherwise
     """
