@@ -16,8 +16,7 @@ node_modules/
 
 # Project-specific
 _archive/
-thesis-output/*/
+thesis-output/
+user-resource/
 firebase-debug.log
 coding-resource/*.pdf
-user-resource/uploaded-papers/*.pdf
-user-resource/proposal/*.pdf
