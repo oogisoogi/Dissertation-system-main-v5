@@ -16,7 +16,16 @@ node_modules/
 
 # Project-specific
 _archive/
-thesis-output/
-user-resource/
 firebase-debug.log
 coding-resource/*.pdf
+
+# thesis-output: runtime output (session data, generated papers)
+thesis-output/
+
+# user-resource: user-uploaded files only (keep scripts and directory structure)
+user-resource/**/*.pdf
+user-resource/**/*.docx
+user-resource/**/*.txt
+user-resource/**/*.doc
+!user-resource/**/_extract_docx.py
+!user-resource/**/.gitkeep
