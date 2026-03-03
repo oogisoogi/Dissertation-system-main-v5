@@ -53,6 +53,41 @@ allowed-tools: Bash(*), Write(*), Read(*), AskUserQuestion(*)
 
 ---
 
+### Step 1.5: 시뮬레이션 모드 선택 (MANDATORY — 반드시 먼저 표시)
+
+**이 단계는 절대 생략할 수 없습니다.** 사용자가 "시작하자" 등으로 워크플로우를 시작하면, 환영 메시지 직후 반드시 이 시뮬레이션 모드 선택을 먼저 표시합니다.
+
+AskUserQuestion으로 시뮬레이션 모드를 선택합니다:
+
+```yaml
+questions:
+  - question: "논문 시뮬레이션 모드를 선택하세요. 연구 품질(pTCS/SRCS 75+)은 모든 모드에서 동일합니다. 차이는 분량과 소요 시간뿐입니다."
+    header: "시뮬레이션"
+    multiSelect: false
+    options:
+      - label: "Quick Simulation (권장 — 빠른 검증)"
+        description: "압축된 박사급 논문 (20-30p, 1-2시간). Ch 1-5 모두 작성. 전체 흐름 확인 및 방향 검증에 최적. 학회 발표 수준."
+
+      - label: "Full Simulation (최종 완성)"
+        description: "상세한 박사급 논문 (145-155p, 5-7시간). Ch 1-5 모두 작성. 최종 학위논문 및 학술지 투고용. Journal article 수준."
+
+      - label: "Quick → Full (단계적 완성)"
+        description: "1단계: Quick으로 전체 초안 작성 → 2단계: 사용자 검토 및 방향 확인 → 3단계: Full로 정교화. 가장 안전한 접근 (6-9시간)."
+
+      - label: "Smart Autopilot (AI 자동 선택)"
+        description: "AI가 연구 복잡도와 불확실성을 분석하여 최적 모드를 자동 결정. 불확실성 높으면 Quick, 낮으면 Full을 자동 선택."
+```
+
+선택 결과를 변수에 저장:
+- **"Quick Simulation" 선택 시**: `simulation_mode = "quick"`
+- **"Full Simulation" 선택 시**: `simulation_mode = "full"`
+- **"Quick → Full" 선택 시**: `simulation_mode = "both"`
+- **"Smart Autopilot" 선택 시**: `simulation_mode = "smart"`
+
+> **참고**: 이 선택은 HITL-2(문헌검토 승인), HITL-3(연구설계 승인) 시점에서 변경(override) 가능합니다.
+
+---
+
 ### Step 2-1: 대분류 선택
 
 AskUserQuestion으로 사용자에게 3가지 대분류 중 선택을 요청합니다.
@@ -392,9 +427,10 @@ questions:
 수집된 정보를 바탕으로 자동으로 워크플로우를 초기화하고 시작합니다.
 
 ```bash
-# 1. 세션 초기화 (수집된 정보 사용)
+# 1. 세션 초기화 (수집된 정보 사용 — simulation_mode 필수 전달)
 python3 .claude/skills/thesis-orchestrator/scripts/init_session.py \
   --mode [선택된 모드] \
+  --simulation-mode [Step 1.5에서 선택된 값: quick|full|both|smart] \
   --discipline "[학문 분야]" \
   --type "[연구 유형]" \
   --citation-style [인용 스타일 키: apa7|chicago17|mla9|harvard|ieee] \
@@ -426,6 +462,7 @@ python3 .claude/skills/thesis-orchestrator/scripts/init_session.py \
 │     thesis-output/[연구제목-2026-01-28]/                   │
 │                                                              │
 │  📋 선택된 모드: [Mode A: 연구 주제 입력]                    │
+│  🎮 시뮬레이션: [Quick / Full / Both / Smart]               │
 │  📚 학문 분야: [경영학/경제학]                               │
 │  🔬 연구 유형: [아직 미정]                                   │
 │                                                              │

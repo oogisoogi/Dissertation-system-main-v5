@@ -266,3 +266,54 @@ SRCS 가중치도 연구유형별 차별화 (SOT-A):
 - `user-resource/proposal/`: 연구 프로포절 및 추출 스크립트
 
 **결과**: SKILL.md 파일 배치 규칙과 일관된 구조.
+
+---
+
+## ADR-016: 시뮬레이션 모드 필수 선택 (Mandatory Simulation Mode Selection)
+
+**일시**: 2026-03-02
+**상태**: 채택됨
+
+**맥락**: Phase 3 (논문 작성)에서 Quick(20-30p)/Full(145-155p)/Both/Smart 시뮬레이션 모드가 존재하나, 모드 선택이 필수가 아니었음. 사용자가 "시작하자"로 워크플로우를 시작해도 모드 선택 없이 기본값(Full)이 자동 적용되어 사용자 의도와 불일치 발생 가능.
+
+**결정**:
+1. `quick-start.md`에 Step 1.5 추가: 환영 메시지 직후 시뮬레이션 모드 선택을 **반드시** 표시
+2. `init_session.py`에 `--simulation-mode` CLI 인수 추가: 선택 결과를 `session.json`의 `options.simulation_mode`에 저장
+3. `workflow_constants.py` (SOT-A)에 `SIMULATION_MODES`, `DEFAULT_SIMULATION_MODE`, `VALID_SIMULATION_MODES` 추가
+4. 모든 모드에서 동일한 품질 기준 적용 (pTCS ≥ 75, SRCS ≥ 75, DWC ≥ 80, Plagiarism < 15%)
+
+**Producer-Consumer 데이터 흐름**:
+- Producer: `quick-start.md` (UI) → `init_session.py` (저장)
+- Storage: `session.json` → `options.simulation_mode`
+- Consumer: `simulation_router.py` (결정론적 라우팅)
+
+**결과**: 모든 세션에서 사용자가 시뮬레이션 모드를 명시적으로 선택. 기본값 추측 없음.
+
+---
+
+## ADR-017: 결정론적 시뮬레이션 라우팅 (Deterministic Simulation Routing)
+
+**일시**: 2026-03-02
+**상태**: 채택됨
+
+**맥락**: `run-writing.md`의 Step 0.5에서 시뮬레이션 모드에 따른 실행 경로 분기가 마크다운 산문(prose)으로 작성되어 LLM이 해석하여 경로를 결정하는 구조였음. 이는 시스템의 핵심 설계 원칙 — "Tasks requiring exact, 100% reproducible results must be Python code" (ADR-004, `validate_gate.py` 선례) — 에 위배됨.
+
+**문제점**:
+- 마크다운 테이블의 LLM 해석은 비결정론적 (동일 입력에 다른 결과 가능)
+- 경로 분기는 전체 Phase 3 실행에 영향을 미치는 critical branching decision
+- 기존 시스템의 모든 critical decision (gate 검증, SRCS, pTCS)은 이미 결정론적 Python
+
+**결정**: `simulation_router.py` 생성 — `validate_gate.py`와 동일 패턴의 결정론적 Python 스크립트
+- 입력: `--dir` (프로젝트 작업 디렉토리)
+- 처리: session.json 읽기(read-only) → 모드 검증 → Smart 불확실성 계산 → 실행 계획 구축
+- 출력: 구조화된 JSON (execution_path, steps/phases, quality_thresholds, page_targets)
+- `run-writing.md`는 JSON 결과를 따르는 프레젠테이션 레이어로 전환 (validate-gate.md 선례)
+
+**Smart 모드 불확실성 계산** (결정론적):
+- SRCS 평균 ≥ 90 → uncertainty 0.1 → Full
+- SRCS 평균 ≥ 80 → uncertainty 0.3 → Full
+- SRCS 평균 ≥ 70 → uncertainty 0.5 → Both
+- SRCS 평균 < 70 → uncertainty 0.8 → Quick
+- 데이터 없음 → uncertainty 0.7 → Both (보수적)
+
+**결과**: 시뮬레이션 라우팅의 재현성 보장. 동일 session.json → 동일 실행 계획. LLM 할루시네이션 원천 차단.

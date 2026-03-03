@@ -208,6 +208,38 @@ AUTOPILOT_DEFAULTS = {
     'pause_reason': None,
 }
 
+# ---------------------------------------------------------------------------
+# Simulation Mode Constants (Quick/Full thesis output)
+# ---------------------------------------------------------------------------
+SIMULATION_MODES = {
+    'quick': {
+        'label': 'Quick Simulation',
+        'pages_min': 20,
+        'pages_max': 30,
+        'chapter_pages': {'ch1': 4, 'ch2': 6, 'ch3': 5, 'ch4': 5, 'ch5': 4},
+        'estimated_hours': '1-2',
+        'writer_agent': 'thesis-writer-quick-rlm',
+    },
+    'full': {
+        'label': 'Full Simulation',
+        'pages_min': 145,
+        'pages_max': 155,
+        'chapter_pages': {'ch1': 15, 'ch2': 45, 'ch3': 25, 'ch4': 35, 'ch5': 20},
+        'estimated_hours': '5-7',
+        'writer_agent': 'thesis-writer-rlm',
+    },
+    'both': {
+        'label': 'Quick → Review → Full',
+        'estimated_hours': '6-9',
+    },
+    'smart': {
+        'label': 'Smart Autopilot',
+        'uncertainty_thresholds': {'high': 0.7, 'low': 0.3},
+    },
+}
+DEFAULT_SIMULATION_MODE = 'full'
+VALID_SIMULATION_MODES = set(SIMULATION_MODES.keys())
+
 # ===========================================================================
 # Quality Gate Thresholds & Scoring Constants (SOT-A)
 # ===========================================================================

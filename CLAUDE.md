@@ -28,6 +28,9 @@ AI 기반 박사논문 연구 워크플로우 시뮬레이션 시스템. 연구 
 - `PTCS_THRESHOLDS`: claim=60, agent=70, phase=75, workflow=75
 - `PTCS_PROXY_WEIGHTS`: srcs=0.70, consistency=0.30
 - `HALLUCINATION_PATTERNS`: 4 카테고리 (BLOCK/REQUIRE_SOURCE/SOFTEN/VERIFY), 한영 이중
+- `SIMULATION_MODES`: 4개 모드별 설정 (quick/full/both/smart)
+- `DEFAULT_SIMULATION_MODE`: 'full' (미선택 시 기본값)
+- `VALID_SIMULATION_MODES`: {'quick', 'full', 'both', 'smart'}
 
 ### SOT-C 상태 관리
 
@@ -58,15 +61,25 @@ DWC >= 80           # 학술 글쓰기 준수
 pTCS >= 75          # 논문 완성도 (workflow 레벨)
 ```
 
-### Gate 검증 — 결정론적 Python
+### 결정론적 Python 원칙
 
-`validate_gate.py`가 모든 gate 판정의 단일 진입점:
+> "Tasks requiring exact, 100% reproducible results must be Python code."
+
+100% 정확하고 반복 가능한 결과를 내야 하는 모든 판정/라우팅은 결정론적 Python 스크립트로 구현합니다. LLM 해석 없음.
+
+**Gate 검증** — `validate_gate.py` (단일 진입점):
 1. `session.json`에서 `research_type` 로드
 2. 출력 파일 수집 (`_temp/` → `01-literature/`)
 3. SRCS 계산 (결정론적)
 4. Cross-validation 일관성 계산 (결정론적)
 5. pTCS proxy = `srcs * 0.70 + consistency * 0.30`
 6. `DualConfidenceCalculator`로 PASS/FAIL/MANUAL_REVIEW 판정
+
+**시뮬레이션 라우팅** — `simulation_router.py` (Phase 3 진입점):
+1. `session.json`에서 `simulation_mode` 로드
+2. Smart 모드 시 불확실성 결정론적 계산
+3. 실행 계획 JSON 생성 (에이전트 순서, 페이지 목표, 품질 임계값)
+4. 모든 모드에서 동일한 품질 기준 적용 (SOT-A에서 로드)
 
 ### No Fake Scores 원칙
 
@@ -130,3 +143,4 @@ Completion (147-150)   → 최종 완료
 5. `_temp/` 디렉토리는 프로젝트 루트 기준 (하위 디렉토리 아님)
 6. Lightweight hook은 stdlib만 사용 (workflow_constants import 불가)
 7. session.json은 오케스트레이터만 수정 (단일 기록자 원칙)
+8. 반복 가능한 정확한 결과가 필요한 판정/라우팅은 결정론적 Python 스크립트로 구현 (LLM 판단 배제)

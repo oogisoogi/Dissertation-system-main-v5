@@ -44,6 +44,64 @@ agent: general-purpose
 
 ---
 
+### Step 0.5: ⭐ Simulation Mode Routing (MANDATORY — Deterministic Python)
+
+**결정론적 Python 스크립트로 실행 경로를 결정합니다. LLM 판단 없음.**
+
+> Design Principle: "Tasks requiring exact, 100% reproducible results must be Python code."
+> — validate_gate.py와 동일한 원칙 적용
+
+```bash
+# 결정론적 라우팅: simulation_router.py가 JSON 실행 계획을 반환
+cd $(git rev-parse --show-toplevel) && \
+python3 .claude/skills/thesis-orchestrator/scripts/simulation_router.py \
+  --dir "thesis-output/<session-dir>"
+```
+
+**출력 예시 (JSON):**
+```json
+{
+  "simulation_mode": "quick",
+  "resolved_mode": "quick",
+  "execution_path": "quick",
+  "writer_agent": "thesis-writer-quick-rlm",
+  "use_simulation_controller": true,
+  "skip_outline": true,
+  "page_targets": {"ch1": 4, "ch2": 6, "ch3": 5, "ch4": 5, "ch5": 4},
+  "quality_thresholds": {"ptcs_min": 75, "srcs_min": 75, "dwc_min": 80, "plagiarism_max_percent": 15},
+  "steps": [
+    {"order": 1, "agent": "simulation-controller", "action": "write", "args": {"mode": "quick", "phase": "phase3"}},
+    {"order": 2, "agent": "thesis-reviewer", "action": "review", "args": {"dwc_threshold": 80}},
+    {"order": 3, "agent": "plagiarism-checker", "action": "check"},
+    {"order": 4, "agent": null, "action": "integrate", "output": "thesis-final.md"},
+    {"order": 5, "agent": null, "action": "export-docx"}
+  ]
+}
+```
+
+**라우팅 후 동작:**
+
+| `execution_path` | 동작 | 비고 |
+|-------------------|------|------|
+| `"full"` | 아래 Step 1부터 진행 (기존 경로 100% 보존) | 기본값, 하위 호환성 |
+| `"quick"` | JSON의 `steps` 배열 순서대로 에이전트 실행 | simulation-controller → thesis-reviewer(DWC 80+) → plagiarism-checker → integrate → export |
+| `"both"` | JSON의 `phases` 배열 순서대로 (Quick → HITL → Full) | Phase A: Quick, Phase B: 사용자 검토, Phase C: Full |
+
+**⚠️ 품질 기준은 모든 모드에서 동일합니다** (`quality_thresholds` 참조):
+- pTCS ≥ 75, SRCS ≥ 75, DWC ≥ 80, Plagiarism < 15%
+
+**⚠️ "smart" 모드는 `simulation_router.py`가 불확실성을 결정론적으로 계산하여 quick/full/both 중 하나로 자동 해소합니다** (`smart_resolution` 필드 참조).
+
+**Quick/Both 경로 완료 후**: HITL-7 (초안 검토) → Phase 4 (Publication)로 진행
+
+---
+
+#### Full Execution Path (`execution_path == "full"`)
+
+**기존 경로를 100% 그대로 유지합니다. 아래 Step 1부터 진행합니다.**
+
+---
+
 ### Step 1: 아웃라인 설계
 ```
 @thesis-architect → thesis-outline.md

@@ -40,7 +40,7 @@
 |------|-----|------|
 | **전체 에이전트** | 116 | flat + hierarchical + meta/utility |
 | **워크플로우 명령어** | 44 | 초기화, 실행, 검증, HITL, 시뮬레이션, 자기개선, pTCS/SRCS |
-| **Python 스크립트** | 55 | 품질 검증, 게이트 관리, 피드백 추출 등 |
+| **Python 스크립트** | 56 | 품질 검증, 게이트 관리, 시뮬레이션 라우팅, 피드백 추출 등 |
 | **Pre/Post Hooks** | 9 | PreToolUse 3 + PostToolUse 6 (실시간 품질 감시) |
 | **입력 모드** | 7 (A-G) | Topic, Question, Review, Learning, Paper, Proposal, Custom |
 | **출력물** | 이중언어 | English + Korean |
@@ -218,6 +218,7 @@ Next Phase
 - ✅ 7-Layer QA active (L1 실시간 GRA Hook ~ L7 DWC)
 - ✅ SOT 4-Domain Architecture (SOT-A/B/C/D)
 - ✅ Deterministic Gate Validation (validate_gate.py, No LLM)
+- ✅ Deterministic Simulation Routing (simulation_router.py, No LLM)
 - ✅ No Fake Scores (모든 가짜 폴백 점수 제거)
 - ✅ Research-type-aware SRCS (qualitative/SLR/mixed 전용 grounding)
 - ✅ RLM integration (200K+ context)
@@ -227,6 +228,7 @@ Next Phase
 - ✅ SOT-A 중앙집중화: 10+ 파일의 상수를 `workflow_constants.py`로 통합
 - ✅ No Fake Scores: 가짜 폴백 점수 (85, 85.7, 8.7) 완전 제거
 - ✅ validate_gate.py: 결정론적 gate 검증 단일 진입점
+- ✅ simulation_router.py: 결정론적 시뮬레이션 모드 라우팅 단일 진입점
 - ✅ Lightweight GRA Hook: Write/Edit 시 실시간 환각 차단 (PreToolUse)
 - ✅ Chapter Consistency Validator: 교차 챕터 일관성 검증
 - ✅ Feedback Extractor: 리뷰 보고서 → 구조화된 수정 지시서
@@ -827,7 +829,7 @@ Dissertation-system-main-v4/
 │   ├── skills/                             # Orchestration Skills (10)
 │   │   ├── thesis-orchestrator/            # ⭐ Main Skill
 │   │   │   ├── SKILL.md                    # Skill definition (proactive trigger)
-│   │   │   ├── scripts/                    # 43 scripts (21,437 lines)
+│   │   │   ├── scripts/                    # 44 scripts (21,937 lines)
 │   │   │   │   ├── # ── Core ──────────────
 │   │   │   │   ├── init_session.py         # 세션 초기화
 │   │   │   │   ├── checklist_manager.py    # 150-step tracking
@@ -863,6 +865,9 @@ Dissertation-system-main-v4/
 │   │   │   │   ├── improvement_analyzer.py      # ⭐ (v4)
 │   │   │   │   ├── change_classifier.py         # ⭐ (v4)
 │   │   │   │   ├── improvement_logger.py        # ⭐ (v4)
+│   │   │   │   │
+│   │   │   │   ├── # ── Simulation Routing ─
+│   │   │   │   ├── simulation_router.py         # ⭐ (v5) 결정론적 시뮬레이션 모드 라우팅
 │   │   │   │   │
 │   │   │   │   ├── # ── Other ──────────────
 │   │   │   │   ├── translate_to_korean.py       # Auto translation
@@ -1370,6 +1375,7 @@ rlm_agents = [
 | `autopilot-manager` | 불확실성 분석, 실행 모드 자동 선택 |
 | `simulation-controller` | Quick/Full/Both 시뮬레이션 제어 |
 | `alphago-evaluator` | AlphaGo-style 품질 평가 (pTCS/SRCS/Plagiarism) |
+| `simulation_router.py` | 결정론적 시뮬레이션 모드 라우팅 (Python, LLM 없음) |
 
 ## 3.6 Self-Improvement System (v4 NEW) ⭐
 
@@ -6289,6 +6295,7 @@ workflow_constants.py (SOT-A)
   ├── ptcs_enforcer.py       (imports: PTCS_THRESHOLDS, MAX_RETRIES_AGENT)
   ├── srcs_evaluator.py      (imports: SRCS_WEIGHTS_BY_TYPE, GRADE_BANDS, OVERCONFIDENCE)
   ├── validate_gate.py       (imports: WAVE_FILES, PTCS_PROXY_WEIGHTS)
+  ├── simulation_router.py   (imports: SIMULATION_MODES, VALID_SIMULATION_MODES, DEFAULT_SIMULATION_MODE, thresholds)
   └── chapter_consistency_validator.py (imports: severity weights)
 ```
 
@@ -6307,7 +6314,26 @@ validate_gate.py (단일 진입점)
   └── DualConfidenceCalculator → PASS / FAIL / MANUAL_REVIEW / PASS_WITH_CAUTION
 ```
 
-### 9.4.3 Real-time Hallucination Prevention
+### 9.4.3 Deterministic Simulation Routing
+
+```
+simulation_router.py (Phase 3 진입점)
+  │
+  ├── session.json → simulation_mode 로드 (read-only)
+  ├── 모드 검증 (VALID_SIMULATION_MODES, 미인식 → full 폴백)
+  ├── Smart 모드: _compute_uncertainty() → 결정론적 해소
+  │     └── avg SRCS ≥90→0.1, ≥80→0.3, ≥70→0.5, <70→0.8, 없음→0.7
+  ├── 실행 계획 구축:
+  │     ├── Quick: simulation-controller → thesis-reviewer → plagiarism → integrate → export
+  │     ├── Full: thesis-architect → thesis-writer → thesis-reviewer → plagiarism → integrate → export
+  │     └── Both: Phase A(Quick) → Phase B(HITL) → Phase C(Full)
+  └── JSON 출력: execution_path, steps/phases, quality_thresholds, page_targets
+```
+
+**설계 원칙**: `validate_gate.py`와 동일 — "Tasks requiring exact, 100% reproducible results must be Python code."
+**데이터 흐름**: quick-start.md (UI) → init_session.py (저장) → session.json → simulation_router.py (라우팅) → run-writing.md (실행)
+
+### 9.4.4 Real-time Hallucination Prevention
 
 ```
 사용자/에이전트가 Write/Edit 호출
@@ -6323,7 +6349,7 @@ lightweight-gra-hook.py (PreToolUse)
 실제 Write/Edit 실행
 ```
 
-### 9.4.4 Chapter Consistency Validation
+### 9.4.5 Chapter Consistency Validation
 
 4가지 결정론적 검사:
 1. **용어 일관성**: 동일 개념의 다른 표기 감지 (AI vs artificial intelligence)
@@ -6331,7 +6357,7 @@ lightweight-gra-hook.py (PreToolUse)
 3. **수치 일관성**: 동일 맥락의 다른 수치 감지 (5% 차이 임계값)
 4. **교차 참조**: 존재하지 않는 챕터/절 참조 감지
 
-### 9.4.5 Feedback Extraction Pipeline
+### 9.4.6 Feedback Extraction Pipeline
 
 ```
 thesis-reviewer 출력 (review-report-chN.md)
@@ -6582,13 +6608,14 @@ After:  agent_ptcs = claim_avg/2 + coverage(real) + consistency(real) + firewall
 **Files**:
 - Agents: 116 total (v4 대비 +8)
 - Commands: 44 total (+3 new)
-- Scripts: 55 total (+12 new)
+- Scripts: 56 total (+13 new, simulation_router.py 추가)
 - Hooks: 9 total (Pre 3 + Post 6, lightweight GRA hook 신규)
 
 **Impact**:
 - Quality layers: 3 → 7 (4 신규 계층)
 - Fake scores: 6 instances → 0 (fail-honest)
 - Gate validation: LLM-dependent → Deterministic Python
+- Simulation routing: Prose-based → Deterministic Python (simulation_router.py)
 - Qualitative SRCS: Penalized → Fair (전용 grounding 패턴)
 - Cross-validator false positives: High → Low (2+ shared words, stopword filter)
 - Hallucination prevention: Post-hoc only → Real-time + Post-hoc
@@ -7247,7 +7274,8 @@ thesis-output/{session-id}/
   모르면 모른다고 답하는 시스템
 
 "Deterministic Where It Matters" (v5)
-  품질 판정 = 결정론적 Python
+  품질 판정 = 결정론적 Python (validate_gate.py)
+  실행 경로 라우팅 = 결정론적 Python (simulation_router.py)
   콘텐츠 생성 = LLM
 
 "Single Source of Truth" (v5)

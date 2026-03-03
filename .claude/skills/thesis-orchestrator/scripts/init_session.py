@@ -35,7 +35,7 @@ from citation_style_config import (
 )
 
 # Import shared constants (single source of truth)
-from workflow_constants import TOTAL_STEPS
+from workflow_constants import TOTAL_STEPS, DEFAULT_SIMULATION_MODE, VALID_SIMULATION_MODES
 
 # Constants
 VERSION = "2.3.0"
@@ -96,6 +96,7 @@ def create_session(
     citation_style: str | None = None,
     entry_path: str | None = None,
     custom_preferences: dict[str, Any] | None = None,
+    simulation_mode: str | None = None,
 ) -> dict[str, Any]:
     """Create a new session structure with path consistency.
 
@@ -109,6 +110,7 @@ def create_session(
         citation_style: Citation style key (apa7, chicago17, mla9, harvard, ieee)
         entry_path: Entry path identifier (e.g., "custom" for Mode G)
         custom_preferences: Pre-parsed preferences from custom input (Mode G)
+        simulation_mode: Simulation mode (quick, full, both, smart)
 
     Returns:
         A dictionary containing the session structure
@@ -153,6 +155,7 @@ def create_session(
             "citation_config": citation_config,
             "language": "korean",
             "thesis_format": "traditional_5chapter",
+            "simulation_mode": simulation_mode if simulation_mode in VALID_SIMULATION_MODES else DEFAULT_SIMULATION_MODE,
         },
         "quality": {
             "srcs_scores": [],
@@ -380,6 +383,7 @@ def initialize_workflow(
     citation_style: str | None = None,
     entry_path: str | None = None,
     custom_preferences: dict[str, Any] | None = None,
+    simulation_mode: str | None = None,
 ) -> Path:
     """Initialize a complete research workflow with path consistency.
 
@@ -396,6 +400,7 @@ def initialize_workflow(
         citation_style: Citation style key (apa7, chicago17, mla9, harvard, ieee)
         entry_path: Entry path identifier (e.g., "custom" for Mode G)
         custom_preferences: Pre-parsed preferences from custom input (Mode G)
+        simulation_mode: Simulation mode (quick, full, both, smart)
 
     Returns:
         Path to the output directory
@@ -450,6 +455,7 @@ def initialize_workflow(
         citation_style=citation_style,
         entry_path=entry_path,
         custom_preferences=custom_preferences,
+        simulation_mode=simulation_mode,
     )
 
     # Copy uploaded paper if in paper-upload mode
@@ -563,6 +569,12 @@ def main():
         default=None,
         help="Citation style (apa7, chicago17, mla9, harvard, ieee)"
     )
+    parser.add_argument(
+        "--simulation-mode",
+        choices=["quick", "full", "both", "smart"],
+        default=None,
+        help="Simulation mode (quick, full, both, smart)"
+    )
 
     args = parser.parse_args()
 
@@ -598,6 +610,7 @@ def main():
             citation_style=args.citation_style,
             entry_path=args.entry_path,
             custom_preferences=custom_preferences,
+            simulation_mode=args.simulation_mode,
         )
 
         print(f"✅ Success! Workflow initialized at: {output_dir}")
