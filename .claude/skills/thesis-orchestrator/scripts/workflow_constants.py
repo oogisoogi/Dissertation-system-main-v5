@@ -201,7 +201,7 @@ HITL_STEPS = {
 AUTOPILOT_DEFAULTS = {
     'enabled': False,
     'mode': 'full',        # full | semi | review-only
-    'hitl_mode': 'auto-approve',  # auto-approve | manual | review-only
+    'hitl_mode': 'manual',  # auto-approve | manual | review-only
     'started_at': None,
     'target': 'completion',  # completion | phase0 | phase1 | phase2 | phase3 | phase4
     'paused': False,
@@ -233,7 +233,7 @@ SIMULATION_MODES = {
         'estimated_hours': '6-9',
     },
     'smart': {
-        'label': 'Smart Autopilot',
+        'label': 'Smart Mode',
         'uncertainty_thresholds': {'high': 0.7, 'low': 0.3},
     },
 }

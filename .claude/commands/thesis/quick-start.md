@@ -57,6 +57,9 @@ allowed-tools: Bash(*), Write(*), Read(*), AskUserQuestion(*)
 
 **이 단계는 절대 생략할 수 없습니다.** 사용자가 "시작하자" 등으로 워크플로우를 시작하면, 환영 메시지 직후 반드시 이 시뮬레이션 모드 선택을 먼저 표시합니다.
 
+**MANDATORY: 아래 4개 옵션을 AskUserQuestion의 options에 모두 포함해야 합니다.
+어떤 옵션도 생략, 축약, 병합하지 마십시오. 4개 옵션이 모두 표시되어야 합니다.**
+
 AskUserQuestion으로 시뮬레이션 모드를 선택합니다:
 
 ```yaml
@@ -74,15 +77,31 @@ questions:
       - label: "Quick → Full (단계적 완성)"
         description: "1단계: Quick으로 전체 초안 작성 → 2단계: 사용자 검토 및 방향 확인 → 3단계: Full로 정교화. 가장 안전한 접근 (6-9시간)."
 
-      - label: "Smart Autopilot (AI 자동 선택)"
-        description: "AI가 연구 복잡도와 불확실성을 분석하여 최적 모드를 자동 결정. 불확실성 높으면 Quick, 낮으면 Full을 자동 선택."
+      - label: "Smart Mode (AI 자동 선택)"
+        description: "AI가 연구 복잡도와 불확실성을 분석하여 최적 모드를 자동 결정. 불확실성 높으면 Quick, 낮으면 Full을 자동 선택. (Autopilot과 별개 — HITL 자동승인 아님)"
 ```
 
-선택 결과를 변수에 저장:
-- **"Quick Simulation" 선택 시**: `simulation_mode = "quick"`
-- **"Full Simulation" 선택 시**: `simulation_mode = "full"`
-- **"Quick → Full" 선택 시**: `simulation_mode = "both"`
-- **"Smart Autopilot" 선택 시**: `simulation_mode = "smart"`
+**⛔ MANDATORY VALIDATION — AskUserQuestion 응답 검증 (이 블록을 건너뛸 수 없음)**
+
+AskUserQuestion 반환 후, 반드시 다음 검증을 수행합니다:
+
+1. **반환값에서 선택된 옵션 label 확인**: 반환 텍스트에 아래 4개 label 중 하나가 포함되어야 합니다.
+   - "Quick Simulation" → `simulation_mode = "quick"`
+   - "Full Simulation" → `simulation_mode = "full"`
+   - "Quick → Full" 또는 "Quick.*Full" → `simulation_mode = "both"`
+   - "Smart Mode" → `simulation_mode = "smart"`
+
+2. **빈 응답 확인**: 반환값이 `"User has answered your questions: ."` 또는 label이 없으면:
+   - ⛔ **즉시 중단**
+   - 사용자에게 "선택이 감지되지 않았습니다. 다시 선택해주세요." 안내
+   - AskUserQuestion 재호출
+
+3. **에코백**: 유효한 선택이 확인되면 반드시 출력:
+   ```
+   ✅ 시뮬레이션 모드 선택 확인: [선택된 label]
+   ```
+
+**이 검증을 통과해야만 Step 2-1로 진행할 수 있습니다.**
 
 > **참고**: 이 선택은 HITL-2(문헌검토 승인), HITL-3(연구설계 승인) 시점에서 변경(override) 가능합니다.
 
@@ -108,6 +127,14 @@ questions:
         description: "논문 연구 방법론을 체계적으로 학습합니다. 8개 트랙 튜토리얼을 제공합니다."
 ```
 
+**⛔ MANDATORY VALIDATION — Step 2-1 응답 검증**
+
+AskUserQuestion 반환 후:
+1. 반환값에 "새로운 연구 시작", "자료 기반 시작", "학습모드" 중 하나가 포함되어야 합니다.
+2. 빈 응답이면 ⛔ 즉시 중단 → "선택이 감지되지 않았습니다." 안내 → AskUserQuestion 재호출
+3. 유효한 선택 확인 후 에코백: `✅ 시작 방식 선택 확인: [선택된 label]`
+
+분기:
 - **"학습모드" 선택 시**: Mode D 직행 → Step 3-5로 이동
 - **"새로운 연구 시작" 선택 시**: Step 2-2a로 이동
 - **"자료 기반 시작" 선택 시**: Step 2-2b로 이동
@@ -133,6 +160,14 @@ questions:
         description: "주제, 방법론, 변수 등을 자유롭게 기술하면 AI가 구조화합니다. 예: '심리적 안전감이 팀 혁신에 미치는 영향을 양적연구로, 리더십의 조절효과를 보고 싶어요'"
 ```
 
+**⛔ MANDATORY VALIDATION — Step 2-2a 응답 검증**
+
+AskUserQuestion 반환 후:
+1. 반환값에 "연구 주제 입력", "연구질문 직접 입력", "자유 형식 입력" 중 하나가 포함되어야 합니다.
+2. 빈 응답이면 ⛔ 즉시 중단 → "선택이 감지되지 않았습니다." 안내 → AskUserQuestion 재호출
+3. 유효한 선택 확인 후 에코백: `✅ 입력 방식 선택 확인: [선택된 label]`
+
+분기:
 - **"연구 주제 입력" 선택 시**: Mode A → Step 3-1로 이동
 - **"연구질문 직접 입력" 선택 시**: Mode B → Step 3-2로 이동
 - **"자유 형식 입력" 선택 시**: Mode G → Step 3-7로 이동
@@ -158,6 +193,14 @@ questions:
         description: "이미 작성한 문헌검토가 있다면, 이를 분석하여 연구 갭을 식별하고 연구 설계로 진행합니다."
 ```
 
+**⛔ MANDATORY VALIDATION — Step 2-2b 응답 검증**
+
+AskUserQuestion 반환 후:
+1. 반환값에 "선행연구 논문 업로드", "연구 프로포절 업로드", "기존 문헌검토 활용" 중 하나가 포함되어야 합니다.
+2. 빈 응답이면 ⛔ 즉시 중단 → "선택이 감지되지 않았습니다." 안내 → AskUserQuestion 재호출
+3. 유효한 선택 확인 후 에코백: `✅ 자료 유형 선택 확인: [선택된 label]`
+
+분기:
 - **"선행연구 논문 업로드" 선택 시**: Mode E → Step 3-3로 이동
 - **"연구 프로포절 업로드" 선택 시**: Mode F → Step 3-6으로 이동
 - **"기존 문헌검토 활용" 선택 시**: Mode C → Step 3-4로 이동

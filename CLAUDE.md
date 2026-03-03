@@ -28,7 +28,7 @@ AI 기반 박사논문 연구 워크플로우 시뮬레이션 시스템. 연구 
 - `PTCS_THRESHOLDS`: claim=60, agent=70, phase=75, workflow=75
 - `PTCS_PROXY_WEIGHTS`: srcs=0.70, consistency=0.30
 - `HALLUCINATION_PATTERNS`: 4 카테고리 (BLOCK/REQUIRE_SOURCE/SOFTEN/VERIFY), 한영 이중
-- `SIMULATION_MODES`: 4개 모드별 설정 (quick/full/both/smart)
+- `SIMULATION_MODES`: 4개 모드별 설정 (quick/full/both/smart). smart는 불확실성 기반 자동 모드 선택 (autopilot과 별개)
 - `DEFAULT_SIMULATION_MODE`: 'full' (미선택 시 기본값)
 - `VALID_SIMULATION_MODES`: {'quick', 'full', 'both', 'smart'}
 
@@ -128,11 +128,43 @@ Completion (147-150)   → 최종 완료
 - **rlm-context-monitor.py**: RLM 활성화 감시 (비활성 시 I/O 스킵)
 
 ### PostToolUse Hooks
+- **hitl-response-validator.py**: AskUserQuestion 빈 응답 감지 → MANDATORY STOP (HITL 보호)
 - **gate-automation.py**: Wave/Phase 완료 시 자동 gate 검증
 - **retry-enforcer.py**: 품질 미달 시 자동 재시도
 - **thesis-workflow-automation.py**: 워크플로우 자동 진행
 - **cross-wave-validator.py**: Wave 간 교차 검증
 - **word-export-trigger.py**: 자동 Word 내보내기
+
+## AskUserQuestion 응답 검증 규칙 (MANDATORY)
+
+> **이 규칙은 모든 AskUserQuestion 호출에 적용됩니다. 예외 없음.**
+
+### 규칙 1: 응답 검증 필수
+AskUserQuestion 반환 후, 반드시 사용자의 **구체적인 선택 레이블**을 식별해야 합니다.
+- 반환값에서 선택된 옵션의 label 텍스트를 정확히 확인
+- 확인 불가 시 → **즉시 중단**, 사용자에게 재질문
+
+### 규칙 2: 빈 응답 = 진행 금지
+반환값이 다음 패턴이면 **절대 다음 단계로 진행하지 마십시오**:
+- `"User has answered your questions: ."` (빈 응답)
+- `"User has answered your questions:  You can"` (공백만)
+- 선택된 옵션 label이 반환값에 포함되지 않음
+
+### 규칙 3: 에코백 의무
+매 AskUserQuestion 후, 사용자에게 선택 결과를 반드시 에코백합니다:
+```
+선택 확인: [사용자가 선택한 옵션 label]
+```
+에코백할 수 없으면 진행할 수 없습니다.
+
+### 규칙 4: 추정/기본값 금지
+- 빈 응답 시 "(권장)" 옵션을 기본값으로 가정하는 것은 **금지**
+- 어떤 선택이든 사용자의 명시적 응답 없이 추정하는 것은 **금지**
+- 이 규칙 위반은 사용자 데이터 무시에 해당
+
+### PostToolUse Hook 연동
+`hitl-response-validator.py` hook이 빈 응답을 감지하면 stderr로 `HITL_GUARD: MANDATORY_STOP` 경고를 출력합니다.
+이 경고를 받으면 **반드시** 위 규칙 1-4를 따르십시오.
 
 ## 개발 규칙
 

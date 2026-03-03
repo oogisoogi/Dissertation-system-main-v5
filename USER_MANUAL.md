@@ -1125,7 +1125,7 @@ AI: [5시간 후]
 
 ---
 
-### 🤖 Smart Autopilot (완전 자동화) (NEW)
+### 🤖 Smart Mode (자동 모드 선택) (NEW)
 
 **`simulation_router.py`가 결정론적으로 불확실성을 계산하여 Quick/Full/Both를 자동 선택**
 
@@ -1134,7 +1134,7 @@ AI: [5시간 후]
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  Smart Autopilot: 상황에 맞게 자동 선택         │
+│  Smart Mode: 상황에 맞게 자동 선택               │
 │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━   │
 │                                                 │
 │  불확실성 분석 (4가지 요인):                    │
@@ -1168,9 +1168,9 @@ AI: [5시간 후]
 **실제 작동 예시**:
 
 ```bash
-당신: "Autopilot으로 Phase 3까지 자동 실행"
+당신: "/thesis:autopilot on full"
 
-AI: 🤖 Smart Autopilot Activated
+AI: 🤖 Autopilot Activated (Smart Mode로 최적 모드 자동 선택)
 
     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     📍 Phase 1: 문헌검토
@@ -1288,8 +1288,8 @@ Review Only:
 │     품질: Full과 동일 (pTCS 75+)               │
 │                                                 │
 │  🤖 완전 자동화                                 │
-│  → Smart Autopilot                              │
-│     이유: AI가 최적 모드 자동 선택              │
+│  → Smart Mode + /thesis:autopilot on            │
+│     이유: AI가 최적 모드 자동 선택 + HITL 자동  │
 │                                                 │
 │  🎯 최고 품질 (시간 충분)                       │
 │  → Quick (탐색) → AlphaGo (비교) → Full (완성) │
@@ -2599,7 +2599,7 @@ Round 4: 최종 다듬기
 /thesis:run-research-design            # Phase 2: 연구설계 시뮬레이션
 /thesis:run-writing                    # Phase 3: 논문작성 시뮬레이션
 /thesis:run-publication                # Phase 4: 투고전략 시뮬레이션
-/thesis:autopilot                      # 전체 자동 실행 (Smart Autopilot)
+/thesis:autopilot                      # 전체 자동 실행 (HITL 자동승인, 명시적 명령 필요)
 ```
 
 ### 읽고 판단하기 (시뮬레이션 포인트)

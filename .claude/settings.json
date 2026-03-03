@@ -10,6 +10,17 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd $(git rev-parse --show-toplevel) && python3 .claude/hooks/post-tool-use/hitl-response-validator.py"
+          }
+        ]
+      }
     ]
   },
   "_disabled_hooks_reference": {

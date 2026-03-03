@@ -361,13 +361,13 @@ def hook(context):
 - GRA 3계층 모두 통과한 옵션만 평가
 - 높은 승률 = 높은 품질 + 낮은 위험
 
-### Smart Autopilot with GRA
+### Smart Mode with GRA
 
 불확실성 기반 자동 모드 선택.
 
 ```yaml
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Autopilot Decision Algorithm:
+Smart Mode Decision Algorithm:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Step 1: 불확실성 분석 (4가지 요인)
@@ -396,7 +396,7 @@ Step 3: GRA 검증
 
 Step 4: 품질 모니터링
   if pTCS < 75 or SRCS < 75:
-    action = "pause_autopilot"
+    action = "pause_and_notify_user"
     alert = "Quality threshold not met"
     prompt_user = true
 
@@ -407,7 +407,7 @@ Step 4: 품질 모니터링
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-**Autopilot과 GRA 통합**:
+**Smart Mode와 GRA 통합**:
 - 자동 모드 선택에도 GRA 품질 기준 엄격 적용
 - 품질 미달 시 자동 중단 → 사용자 확인
 - Gate 검증 자동 수행 (Hook 통합)
